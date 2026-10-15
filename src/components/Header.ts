@@ -1,14 +1,16 @@
 import { medStore } from '../store/medStore';
 import type { FontScale } from '../types';
 import { formatHeaderDate } from '../utils/date';
+import { openReminderSettingsModal } from './ReminderSettings';
 
 /**
- * Renders the top application header with accessibility controls (font scaling & high contrast)
- * and view navigation tabs.
+ * Renders the top application header with accessibility controls (font scaling & high contrast),
+ * reminder settings launcher, and view navigation tabs.
  */
 export function renderHeader(container: HTMLElement, currentTab: string, onTabChange: (tab: string) => void): void {
   const profile = medStore.getPatientProfile();
   const prefs = medStore.getPreferences();
+  const reminderPrefs = medStore.getReminderPreferences();
   const todayStr = formatHeaderDate(new Date());
 
   container.innerHTML = `
@@ -31,8 +33,18 @@ export function renderHeader(container: HTMLElement, currentTab: string, onTabCh
             </div>
           </div>
 
-          <!-- Accessibility Controls -->
-          <div class="accessibility-controls" role="region" aria-label="Accessibility options">
+          <!-- Header Controls: Reminders & Accessibility -->
+          <div class="header-controls-group" role="region" aria-label="Settings and Accessibility options">
+            <!-- Reminder Settings Entry Point -->
+            <button type="button" id="reminder-settings-btn" class="ctrl-btn reminder-settings-btn ${reminderPrefs.enabled ? 'active' : ''}" aria-label="Open Medication Reminder Settings">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+              </svg>
+              <span>${reminderPrefs.enabled ? 'Reminders: ON' : 'Reminder Settings'}</span>
+            </button>
+
+            <!-- Text Size Scaler -->
             <div class="font-scaler-group" title="Adjust text size">
               <span class="ctrl-label">Text:</span>
               <button type="button" class="ctrl-btn ${prefs.fontScale === 'standard' ? 'active' : ''}" data-scale="standard" aria-label="Standard text size">A</button>
@@ -40,6 +52,7 @@ export function renderHeader(container: HTMLElement, currentTab: string, onTabCh
               <button type="button" class="ctrl-btn ${prefs.fontScale === 'xlarge' ? 'active' : ''}" data-scale="xlarge" aria-label="Extra large text size">A++</button>
             </div>
 
+            <!-- High Contrast Toggle -->
             <button type="button" id="contrast-toggle-btn" class="ctrl-btn contrast-btn ${prefs.highContrast ? 'active' : ''}" aria-label="Toggle High Contrast Mode">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                 <circle cx="12" cy="12" r="10"/>
@@ -53,7 +66,7 @@ export function renderHeader(container: HTMLElement, currentTab: string, onTabCh
         <!-- Navigation Tabs -->
         <nav class="tabs-nav" aria-label="Application sections">
           <button type="button" class="tab-btn ${currentTab === 'timeline' ? 'active' : ''}" data-tab="timeline">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
               <line x1="16" y1="2" x2="16" y2="6"/>
               <line x1="8" y1="2" x2="8" y2="6"/>
@@ -63,15 +76,15 @@ export function renderHeader(container: HTMLElement, currentTab: string, onTabCh
           </button>
 
           <button type="button" class="tab-btn ${currentTab === 'cabinet' ? 'active' : ''}" data-tab="cabinet">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/>
               <path d="m8.5 8.5 7 7"/>
             </svg>
-            <span>Medications & Safety</span>
+            <span>Medications &amp; Safety</span>
           </button>
 
           <button type="button" class="tab-btn ${currentTab === 'fridge' ? 'active' : ''}" data-tab="fridge">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <polyline points="6 9 6 2 18 2 18 9"/>
               <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
               <rect x="6" y="14" width="12" height="8"/>
@@ -82,6 +95,11 @@ export function renderHeader(container: HTMLElement, currentTab: string, onTabCh
       </div>
     </header>
   `;
+
+  // Attach Reminder Settings Modal Event
+  container.querySelector('#reminder-settings-btn')?.addEventListener('click', () => {
+    openReminderSettingsModal();
+  });
 
   // Attach Font Scaler Events
   container.querySelectorAll('.ctrl-btn[data-scale]').forEach(btn => {

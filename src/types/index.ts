@@ -86,3 +86,28 @@ export interface UserPreferences {
   fontScale: FontScale;
   highContrast: boolean;
 }
+
+export type SnoozeInterval = 5 | 10 | 15;
+
+export interface ReminderPreferences {
+  enabled: boolean;
+  includeMedNames: boolean;
+  defaultSnoozeMinutes: SnoozeInterval;
+  customSlotTimes: Record<TimeSlot, string>; // HH:MM in 24-hr format, e.g. "08:00"
+}
+
+export interface ReminderDeliveryState {
+  lastDelivered: Record<string, string>; // key: `${date}_${slot}`, value: ISO timestamp
+  snoozedUntil: Record<string, number>;  // key: `${date}_${slot}`, value: epoch timestamp ms
+  dismissed: Record<string, string>;     // key: `${date}_${slot}`, value: ISO timestamp
+}
+
+export interface ScheduledReminderEvent {
+  slot: TimeSlot;
+  scheduledTime: string;
+  date: string;
+  medications: Medication[];
+  isSnoozed: boolean;
+  isOverdue: boolean;
+  isTaken: boolean;
+}

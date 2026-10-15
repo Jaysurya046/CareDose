@@ -1,4 +1,4 @@
-import type { Medication, PatientProfile, UserPreferences } from '../types';
+import type { Medication, PatientProfile, UserPreferences, ReminderPreferences, ReminderDeliveryState } from '../types';
 
 export const DEFAULT_PROFILE: PatientProfile = {
   name: 'Eleanor Vance',
@@ -62,4 +62,22 @@ export const DEFAULT_MEDICATIONS: Medication[] = [
 export const DEFAULT_PREFERENCES: UserPreferences = {
   fontScale: 'standard',
   highContrast: false
+};
+
+export const DEFAULT_REMINDER_PREFERENCES: ReminderPreferences = {
+  enabled: false,
+  includeMedNames: false,
+  defaultSnoozeMinutes: 10,
+  customSlotTimes: {
+    morning: '08:00',
+    midday: '13:00',
+    evening: '18:30',
+    bedtime: '22:00'
+  }
+};
+
+export const DEFAULT_DELIVERY_STATE: ReminderDeliveryState = {
+  lastDelivered: {},
+  snoozedUntil: {},
+  dismissed: {}
 };

@@ -4,14 +4,16 @@ import { renderHeader } from './components/Header';
 import { renderDailyTimeline } from './components/DailyTimeline';
 import { renderMedicationCabinet } from './components/MedicationCabinet';
 import { renderFridgeSheet } from './components/FridgeSheet';
+import { initReminderCoordinator } from './engine/reminderCoordinator';
 
 // Initialize application state
 let currentTab: string = 'timeline';
 
 const headerMount = document.getElementById('header-mount')!;
+const reminderMount = document.getElementById('reminder-mount')!;
 const viewMount = document.getElementById('view-mount')!;
 
-function applyInitialPreferences() {
+function applyInitialPreferences(): void {
   const prefs = medStore.getPreferences();
   if (prefs.fontScale) {
     document.documentElement.setAttribute('data-scale', prefs.fontScale);
@@ -21,7 +23,7 @@ function applyInitialPreferences() {
   }
 }
 
-function renderCurrentView() {
+function renderCurrentView(): void {
   renderHeader(headerMount, currentTab, (newTab) => {
     currentTab = newTab;
     renderCurrentView();
@@ -39,6 +41,9 @@ function renderCurrentView() {
 // Initial mount
 applyInitialPreferences();
 renderCurrentView();
+
+// Initialize proactive in-app reminder system and visibility listeners
+initReminderCoordinator(reminderMount);
 
 // Subscribe to store updates for reactive re-rendering
 medStore.subscribe(() => {

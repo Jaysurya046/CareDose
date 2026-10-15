@@ -5,17 +5,14 @@ import { evaluateSafetyProfile } from '../engine/watchdog';
  * Renders the interaction safety status banner with calm, factual clinical warnings.
  * Explicitly distinguishes known alerts from absence of evidence in the offline dataset.
  */
-export function renderSafetyWatchdogBanner(
-  container: HTMLElement,
-  onQuickAddMed?: (name: string, generic: string) => void
-): void {
+export function renderSafetyWatchdogBanner(container: HTMLElement): void {
   const activeMeds = medStore.getActiveMedications();
   const evaluation = evaluateSafetyProfile(activeMeds);
   const alerts = evaluation.alerts;
 
   if (evaluation.status === 'insufficient_medications') {
     container.innerHTML = `
-      <div class="safety-banner safe no-print">
+      <div class="safety-banner safe no-print" role="status">
         <div class="safety-banner-icon safe-icon" aria-hidden="true">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
@@ -36,7 +33,7 @@ export function renderSafetyWatchdogBanner(
 
   if (evaluation.status === 'none_found_in_dataset') {
     container.innerHTML = `
-      <div class="safety-banner safe no-print">
+      <div class="safety-banner safe no-print" role="status">
         <div class="safety-banner-icon safe-icon" aria-hidden="true">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
@@ -46,37 +43,12 @@ export function renderSafetyWatchdogBanner(
         <div class="safety-banner-content">
           <div class="safety-title-row">
             <h3 class="safety-title">No Known Interactions in Local Safety Dataset</h3>
-            <span class="badge badge-safe">${activeMeds.length} Meds Assessed</span>
+            <span class="badge badge-safe">${activeMeds.length} Meds Screened</span>
           </div>
-          <p class="safety-desc">No interactions were identified in the offline clinical dataset. <em>Note: Lack of an alert does not guarantee safety.</em> Always confirm regimens with your doctor or pharmacist.</p>
-        </div>
-        <div class="safety-banner-action">
-          <button type="button" class="btn btn-secondary btn-sm" id="btn-demo-conflict" title="Add a conflicting medication to demo the safety watchdog">
-            <span>Demo Conflict Test</span>
-          </button>
+          <p class="safety-desc">No interactions were identified among these medications in the offline clinical dataset. <em>Note: Lack of an alert does not prove medications are safe together.</em> Always verify your complete regimen with your primary physician or pharmacist.</p>
         </div>
       </div>
     `;
-
-    const demoBtn = container.querySelector('#btn-demo-conflict');
-    demoBtn?.addEventListener('click', () => {
-      if (onQuickAddMed) {
-        onQuickAddMed('Potassium Chloride', 'Potassium Supplement');
-      } else {
-        medStore.addMedication({
-          name: 'Potassium Chloride',
-          genericName: 'Potassium Supplement',
-          dosage: '20 mEq',
-          form: 'Tablet',
-          timeSlots: ['morning'],
-          withFood: true,
-          instructions: 'Take in the morning with a full meal.',
-          pillVisual: { shape: 'round', color: 'yellow' },
-          prescribedBy: 'Over-the-counter',
-          isActive: true
-        });
-      }
-    });
     return;
   }
 

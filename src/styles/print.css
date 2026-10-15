@@ -8,24 +8,31 @@
   body, html {
     background: #FFFFFF !important;
     color: #000000 !important;
-    font-size: 11pt !important;
+    font-size: 10pt !important;
     line-height: 1.35 !important;
   }
 
-  /* Hide non-printable app chrome */
+  /* Hide non-printable app chrome & controls */
   header,
   nav,
+  footer,
   .no-print,
   .btn,
   .accessibility-controls,
+  .header-controls-group,
   .tabs-nav,
   .modal-overlay,
-  .safety-banner-action,
-  .cabinet-controls {
+  .safety-banner,
+  .cabinet-controls,
+  .cabinet-header-bar,
+  .dev-demo-card,
+  .mobile-only,
+  #reminder-mount,
+  .toolbar-actions {
     display: none !important;
   }
 
-  /* Ensure the emergency fridge sheet fills the page */
+  /* Ensure the emergency fridge sheet fills the page cleanly */
   .fridge-sheet-container {
     display: block !important;
     width: 100% !important;
@@ -35,102 +42,172 @@
     box-shadow: none !important;
   }
 
+  .fridge-document {
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    color: #000000 !important;
+    gap: 10pt !important;
+  }
+
   .print-header {
     display: flex !important;
-    justify-content: space-between;
-    align-items: flex-start;
-    border-bottom: 2pt solid #000000;
-    padding-bottom: 8pt;
-    margin-bottom: 12pt;
+    justify-content: space-between !important;
+    align-items: flex-start !important;
+    border-bottom: 2pt solid #000000 !important;
+    padding-bottom: 6pt !important;
+    margin-bottom: 8pt !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
 
-  .print-header h1 {
-    font-size: 18pt !important;
+  .emergency-badge {
+    border: 1pt solid #000000 !important;
+    background: #000000 !important;
+    color: #FFFFFF !important;
+    font-size: 8pt !important;
+    padding: 1pt 4pt !important;
+  }
+
+  .emergency-main-title {
+    font-size: 16pt !important;
     font-weight: 800 !important;
     margin: 0 !important;
-    text-transform: uppercase;
-    letter-spacing: 0.5pt;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5pt !important;
+    color: #000000 !important;
   }
 
-  .print-header .emergency-callout {
-    border: 2pt solid #000000;
-    padding: 4pt 8pt;
-    font-weight: 700;
-    font-size: 10pt;
-    text-align: right;
+  .print-subtitle {
+    font-size: 8.5pt !important;
+    color: #000000 !important;
+    margin-top: 2pt !important;
+  }
+
+  .emergency-callout {
+    border: 2pt solid #000000 !important;
+    padding: 4pt 8pt !important;
+    font-weight: 700 !important;
+    font-size: 9pt !important;
+    text-align: right !important;
+    color: #000000 !important;
+  }
+
+  .user-record-notice {
+    font-size: 7.5pt !important;
+    border-left: 2pt solid #000000 !important;
+    background: #F8FAFC !important;
+    padding: 3pt 6pt !important;
+    margin-bottom: 8pt !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
   /* Patient Summary Grid for EMTs */
   .print-patient-grid {
     display: grid !important;
-    grid-template-columns: 2fr 1fr 1fr;
-    gap: 8pt;
-    border: 1.5pt solid #000000;
-    padding: 8pt;
-    margin-bottom: 12pt;
+    grid-template-columns: 2fr 1fr 1fr !important;
+    gap: 6pt !important;
+    border: 1.5pt solid #000000 !important;
+    padding: 6pt !important;
+    margin-bottom: 8pt !important;
     background: #F8FAFC !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
 
-  .print-patient-grid .field-label {
-    font-size: 8pt !important;
+  .field-label {
+    font-size: 7.5pt !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    display: block !important;
+    color: #000000 !important;
+  }
+
+  .field-value {
+    font-size: 10.5pt !important;
     font-weight: 700 !important;
-    text-transform: uppercase;
-    display: block;
+    color: #000000 !important;
   }
 
-  .print-patient-grid .field-value {
-    font-size: 11pt !important;
-    font-weight: 600 !important;
+  .patient-name-val {
+    font-size: 12pt !important;
   }
 
   .print-allergies-box {
-    border: 2pt solid #000000;
-    padding: 6pt 10pt;
-    margin-bottom: 12pt;
+    border: 2pt solid #000000 !important;
+    padding: 6pt 8pt !important;
+    margin-bottom: 8pt !important;
     background: #FFF1F2 !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
 
-  .print-allergies-box .allergy-title {
-    font-size: 9pt;
-    font-weight: 800;
-    text-transform: uppercase;
-    color: #9F1239 !important;
+  .allergy-header {
+    color: #000000 !important;
   }
 
-  .print-allergies-box .allergy-list {
-    font-size: 12pt;
-    font-weight: 700;
-    margin-top: 2pt;
+  .allergy-title {
+    font-size: 8.5pt !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    color: #000000 !important;
+  }
+
+  .allergy-tag {
+    font-size: 10pt !important;
+    font-weight: 700 !important;
+    border: 1.5pt solid #000000 !important;
+    background: #FFFFFF !important;
+    color: #000000 !important;
+    padding: 2pt 5pt !important;
   }
 
   /* Medication Schedule Table */
+  .print-meds-section {
+    margin-bottom: 8pt !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .print-section-heading {
+    font-size: 10pt !important;
+    font-weight: 800 !important;
+    color: #000000 !important;
+  }
+
   .print-table {
     width: 100% !important;
     border-collapse: collapse !important;
-    margin-bottom: 12pt !important;
+    margin-top: 4pt !important;
   }
 
   .print-table th {
-    border-top: 1.5pt solid #000000;
-    border-bottom: 1.5pt solid #000000;
+    border-top: 1.5pt solid #000000 !important;
+    border-bottom: 1.5pt solid #000000 !important;
     padding: 4pt 6pt !important;
-    font-size: 9pt !important;
-    text-transform: uppercase;
-    text-align: left;
+    font-size: 8.5pt !important;
+    text-transform: uppercase !important;
+    text-align: left !important;
     background: #E2E8F0 !important;
+    color: #000000 !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
   .print-table td {
-    border-bottom: 1pt solid #CBD5E1;
-    padding: 5pt 6pt !important;
-    font-size: 10pt !important;
-    vertical-align: top;
+    border-bottom: 1pt solid #000000 !important;
+    padding: 4pt 6pt !important;
+    font-size: 9.5pt !important;
+    vertical-align: top !important;
+    color: #000000 !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
 
   .print-table tr:nth-child(even) td {
@@ -139,36 +216,58 @@
     print-color-adjust: exact;
   }
 
+  .print-generic-name, .print-form-name {
+    color: #000000 !important;
+    font-size: 8pt !important;
+  }
+
+  .print-food-tag {
+    color: #000000 !important;
+    font-weight: 700 !important;
+  }
+
   /* Contacts Footer */
   .print-footer-grid {
     display: grid !important;
-    grid-template-columns: 1fr 1fr;
-    gap: 10pt;
-    margin-top: 10pt;
-    padding-top: 8pt;
-    border-top: 1.5pt solid #000000;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8pt !important;
+    margin-top: 6pt !important;
+    padding-top: 6pt !important;
+    border-top: 1.5pt solid #000000 !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
 
   .print-footer-box {
-    border: 1pt solid #000000;
-    padding: 6pt;
+    border: 1pt solid #000000 !important;
+    padding: 6pt !important;
+    background: #FFFFFF !important;
   }
 
-  .print-footer-box h4 {
-    font-size: 9pt;
-    margin-bottom: 3pt;
-    text-transform: uppercase;
+  .contact-phone-primary {
+    font-size: 11pt !important;
+    font-weight: 800 !important;
+    color: #000000 !important;
   }
 
-  .print-footer-box p {
-    font-size: 10pt;
-    margin: 0;
+  .print-notes-box {
+    margin-top: 6pt !important;
+    border: 1pt solid #000000 !important;
+    padding: 5pt 6pt !important;
+    background: #FFFFFF !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .print-notes-text {
+    font-size: 8.5pt !important;
+    color: #000000 !important;
   }
 
   .print-disclaimer {
-    margin-top: 12pt;
-    font-size: 7.5pt !important;
-    color: #475569 !important;
-    text-align: center;
+    margin-top: 8pt !important;
+    font-size: 7pt !important;
+    color: #000000 !important;
+    text-align: center !important;
   }
 }

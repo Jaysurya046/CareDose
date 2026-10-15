@@ -1,7 +1,7 @@
-import type { Medication, PatientProfile, DailyLog, UserPreferences, TimeSlot } from '../types';
+import type { Medication, PatientProfile, DailyLog, UserPreferences, TimeSlot, ReminderPreferences, ReminderDeliveryState } from '../types';
 import { generateLocalId } from '../utils/sanitize';
 import { formatShortTime, getTodayDateString } from '../utils/date';
-import { DEFAULT_PROFILE, DEFAULT_MEDICATIONS, DEFAULT_PREFERENCES } from '../data/defaultData';
+import { DEFAULT_PROFILE, DEFAULT_MEDICATIONS, DEFAULT_PREFERENCES, DEFAULT_REMINDER_PREFERENCES, DEFAULT_DELIVERY_STATE } from '../data/defaultData';
 import {
   runStorageMigrations,
   loadStoredMedications,
@@ -12,6 +12,10 @@ import {
   saveStoredDailyLog,
   loadStoredPreferences,
   saveStoredPreferences,
+  loadStoredReminderPreferences,
+  saveStoredReminderPreferences,
+  loadStoredDeliveryState,
+  saveStoredDeliveryState,
   exportAllDataAsJSON,
   clearAllLocalData
 } from '../storage/storage';
@@ -27,6 +31,8 @@ class MedicationStore {
   private patientProfile: PatientProfile = DEFAULT_PROFILE;
   private dailyLog: DailyLog = { date: getTodayDateString(), doses: {} };
   private preferences: UserPreferences = DEFAULT_PREFERENCES;
+  private reminderPreferences: ReminderPreferences = DEFAULT_REMINDER_PREFERENCES;
+  private reminderDeliveryState: ReminderDeliveryState = DEFAULT_DELIVERY_STATE;
   private listeners: Set<StoreListener> = new Set();
 
   constructor() {
@@ -39,6 +45,8 @@ class MedicationStore {
     this.patientProfile = loadStoredPatientProfile();
     this.dailyLog = loadStoredDailyLog();
     this.preferences = loadStoredPreferences();
+    this.reminderPreferences = loadStoredReminderPreferences();
+    this.reminderDeliveryState = loadStoredDeliveryState();
   }
 
   private notify(): void {
@@ -69,6 +77,21 @@ class MedicationStore {
 
   public getPreferences(): UserPreferences {
     return { ...this.preferences };
+  }
+
+  public getReminderPreferences(): ReminderPreferences {
+    return {
+      ...this.reminderPreferences,
+      customSlotTimes: { ...this.reminderPreferences.customSlotTimes }
+    };
+  }
+
+  public getReminderDeliveryState(): ReminderDeliveryState {
+    return {
+      lastDelivered: { ...this.reminderDeliveryState.lastDelivered },
+      snoozedUntil: { ...this.reminderDeliveryState.snoozedUntil },
+      dismissed: { ...this.reminderDeliveryState.dismissed }
+    };
   }
 
   // Mutations
@@ -117,6 +140,17 @@ class MedicationStore {
       timestamp
     };
     saveStoredDailyLog(this.dailyLog);
+
+    // If taken, also clear active snooze for this date_slot occurrence
+    if (taken) {
+      const today = getTodayDateString();
+      const slotKey = `${today}_${timeSlot}`;
+      if (this.reminderDeliveryState.snoozedUntil[slotKey]) {
+        delete this.reminderDeliveryState.snoozedUntil[slotKey];
+        saveStoredDeliveryState(this.reminderDeliveryState);
+      }
+    }
+
     this.notify();
   }
 
@@ -132,15 +166,42 @@ class MedicationStore {
     this.notify();
   }
 
+  public updateReminderPreferences(prefs: Partial<ReminderPreferences>): void {
+    this.reminderPreferences = {
+      ...this.reminderPreferences,
+      ...prefs,
+      customSlotTimes: {
+        ...this.reminderPreferences.customSlotTimes,
+        ...(prefs.customSlotTimes || {})
+      }
+    };
+    saveStoredReminderPreferences(this.reminderPreferences);
+    this.notify();
+  }
+
+  public updateReminderDeliveryState(updates: Partial<ReminderDeliveryState>): void {
+    this.reminderDeliveryState = {
+      lastDelivered: { ...this.reminderDeliveryState.lastDelivered, ...(updates.lastDelivered || {}) },
+      snoozedUntil: { ...this.reminderDeliveryState.snoozedUntil, ...(updates.snoozedUntil || {}) },
+      dismissed: { ...this.reminderDeliveryState.dismissed, ...(updates.dismissed || {}) }
+    };
+    saveStoredDeliveryState(this.reminderDeliveryState);
+    this.notify();
+  }
+
   public resetAllData(): void {
     this.medications = DEFAULT_MEDICATIONS;
     this.patientProfile = DEFAULT_PROFILE;
     this.dailyLog = { date: getTodayDateString(), doses: {} };
     this.preferences = DEFAULT_PREFERENCES;
+    this.reminderPreferences = DEFAULT_REMINDER_PREFERENCES;
+    this.reminderDeliveryState = DEFAULT_DELIVERY_STATE;
     saveStoredMedications(this.medications);
     saveStoredPatientProfile(this.patientProfile);
     saveStoredDailyLog(this.dailyLog);
     saveStoredPreferences(this.preferences);
+    saveStoredReminderPreferences(this.reminderPreferences);
+    saveStoredDeliveryState(this.reminderDeliveryState);
     this.notify();
   }
 
@@ -166,6 +227,8 @@ class MedicationStore {
     };
     this.dailyLog = { date: getTodayDateString(), doses: {} };
     this.preferences = DEFAULT_PREFERENCES;
+    this.reminderPreferences = DEFAULT_REMINDER_PREFERENCES;
+    this.reminderDeliveryState = DEFAULT_DELIVERY_STATE;
     this.notify();
   }
 }

@@ -1,5 +1,5 @@
-import type { Medication, PatientProfile, DailyLog, UserPreferences, PillShape, PillColor, TimeSlot, FontScale } from '../types';
-import { DEFAULT_PROFILE, DEFAULT_MEDICATIONS, DEFAULT_PREFERENCES } from '../data/defaultData';
+import type { Medication, PatientProfile, DailyLog, UserPreferences, PillShape, PillColor, TimeSlot, FontScale, ReminderPreferences, ReminderDeliveryState, SnoozeInterval } from '../types';
+import { DEFAULT_PROFILE, DEFAULT_MEDICATIONS, DEFAULT_PREFERENCES, DEFAULT_REMINDER_PREFERENCES, DEFAULT_DELIVERY_STATE } from '../data/defaultData';
 import { getTodayDateString } from '../utils/date';
 
 export const CURRENT_SCHEMA_VERSION = 1;
@@ -9,13 +9,16 @@ export const STORAGE_KEYS = {
   MEDICATIONS: 'caredose_medications_v1',
   PATIENT_PROFILE: 'caredose_patient_profile_v1',
   DAILY_LOG: 'caredose_daily_log_v1',
-  PREFERENCES: 'caredose_preferences_v1'
+  PREFERENCES: 'caredose_preferences_v1',
+  REMINDER_PREFS: 'caredose_reminder_prefs_v1',
+  REMINDER_DELIVERY: 'caredose_reminder_delivery_v1'
 } as const;
 
 const VALID_SHAPES: Set<PillShape> = new Set(['capsule', 'round', 'oval', 'split']);
 const VALID_COLORS: Set<PillColor> = new Set(['white', 'yellow', 'blue', 'pink', 'orange', 'green', 'purple', 'red']);
 const VALID_SLOTS: Set<TimeSlot> = new Set(['morning', 'midday', 'evening', 'bedtime']);
 const VALID_SCALES: Set<FontScale> = new Set(['standard', 'large', 'xlarge']);
+const VALID_SNOOZE: Set<SnoozeInterval> = new Set([5, 10, 15]);
 
 /**
  * Validates a medication record structure. Returns true if valid.
@@ -86,6 +89,42 @@ function isValidPreferences(item: unknown): item is UserPreferences {
     typeof p.fontScale === 'string' &&
     VALID_SCALES.has(p.fontScale as FontScale) &&
     typeof p.highContrast === 'boolean'
+  );
+}
+
+/**
+ * Validates reminder preferences.
+ */
+function isValidReminderPreferences(item: unknown): item is ReminderPreferences {
+  if (typeof item !== 'object' || item === null) return false;
+  const r = item as Record<string, unknown>;
+  if (
+    typeof r.enabled !== 'boolean' ||
+    typeof r.includeMedNames !== 'boolean' ||
+    !VALID_SNOOZE.has(r.defaultSnoozeMinutes as SnoozeInterval) ||
+    typeof r.customSlotTimes !== 'object' ||
+    r.customSlotTimes === null
+  ) {
+    return false;
+  }
+  const times = r.customSlotTimes as Record<string, unknown>;
+  return VALID_SLOTS.has('morning') &&
+    typeof times.morning === 'string' &&
+    typeof times.midday === 'string' &&
+    typeof times.evening === 'string' &&
+    typeof times.bedtime === 'string';
+}
+
+/**
+ * Validates reminder delivery state.
+ */
+function isValidDeliveryState(item: unknown): item is ReminderDeliveryState {
+  if (typeof item !== 'object' || item === null) return false;
+  const d = item as Record<string, unknown>;
+  return (
+    typeof d.lastDelivered === 'object' && d.lastDelivered !== null &&
+    typeof d.snoozedUntil === 'object' && d.snoozedUntil !== null &&
+    typeof d.dismissed === 'object' && d.dismissed !== null
   );
 }
 
@@ -223,6 +262,58 @@ export function saveStoredPreferences(prefs: UserPreferences): void {
 }
 
 /**
+ * Loads reminder preferences.
+ */
+export function loadStoredReminderPreferences(): ReminderPreferences {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.REMINDER_PREFS);
+    if (raw) {
+      const parsed: unknown = JSON.parse(raw);
+      if (isValidReminderPreferences(parsed)) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load reminder preferences from localStorage', e);
+  }
+  return DEFAULT_REMINDER_PREFERENCES;
+}
+
+export function saveStoredReminderPreferences(prefs: ReminderPreferences): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.REMINDER_PREFS, JSON.stringify(prefs));
+  } catch (e) {
+    console.error('Failed to save reminder preferences to localStorage', e);
+  }
+}
+
+/**
+ * Loads reminder delivery state.
+ */
+export function loadStoredDeliveryState(): ReminderDeliveryState {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.REMINDER_DELIVERY);
+    if (raw) {
+      const parsed: unknown = JSON.parse(raw);
+      if (isValidDeliveryState(parsed)) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load reminder delivery state from localStorage', e);
+  }
+  return DEFAULT_DELIVERY_STATE;
+}
+
+export function saveStoredDeliveryState(state: ReminderDeliveryState): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.REMINDER_DELIVERY, JSON.stringify(state));
+  } catch (e) {
+    console.error('Failed to save reminder delivery state to localStorage', e);
+  }
+}
+
+/**
  * Exports all local health and medication data as a formatted JSON document.
  */
 export function exportAllDataAsJSON(): string {
@@ -233,7 +324,9 @@ export function exportAllDataAsJSON(): string {
     patientProfile: loadStoredPatientProfile(),
     medications: loadStoredMedications(),
     dailyLog: loadStoredDailyLog(),
-    preferences: loadStoredPreferences()
+    preferences: loadStoredPreferences(),
+    reminderPreferences: loadStoredReminderPreferences(),
+    reminderDeliveryState: loadStoredDeliveryState()
   };
   return JSON.stringify(exportPayload, null, 2);
 }
