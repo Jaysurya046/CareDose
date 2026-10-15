@@ -1,0 +1,174 @@
+@media print {
+  @page {
+    size: letter portrait;
+    margin: 0.5in;
+  }
+
+  /* Reset all background colors and text for maximum ink efficiency & crisp legibility */
+  body, html {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+    font-size: 11pt !important;
+    line-height: 1.35 !important;
+  }
+
+  /* Hide non-printable app chrome */
+  header,
+  nav,
+  .no-print,
+  .btn,
+  .accessibility-controls,
+  .tabs-nav,
+  .modal-overlay,
+  .safety-banner-action,
+  .cabinet-controls {
+    display: none !important;
+  }
+
+  /* Ensure the emergency fridge sheet fills the page */
+  .fridge-sheet-container {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  .print-header {
+    display: flex !important;
+    justify-content: space-between;
+    align-items: flex-start;
+    border-bottom: 2pt solid #000000;
+    padding-bottom: 8pt;
+    margin-bottom: 12pt;
+  }
+
+  .print-header h1 {
+    font-size: 18pt !important;
+    font-weight: 800 !important;
+    margin: 0 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.5pt;
+  }
+
+  .print-header .emergency-callout {
+    border: 2pt solid #000000;
+    padding: 4pt 8pt;
+    font-weight: 700;
+    font-size: 10pt;
+    text-align: right;
+  }
+
+  /* Patient Summary Grid for EMTs */
+  .print-patient-grid {
+    display: grid !important;
+    grid-template-columns: 2fr 1fr 1fr;
+    gap: 8pt;
+    border: 1.5pt solid #000000;
+    padding: 8pt;
+    margin-bottom: 12pt;
+    background: #F8FAFC !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-patient-grid .field-label {
+    font-size: 8pt !important;
+    font-weight: 700 !important;
+    text-transform: uppercase;
+    display: block;
+  }
+
+  .print-patient-grid .field-value {
+    font-size: 11pt !important;
+    font-weight: 600 !important;
+  }
+
+  .print-allergies-box {
+    border: 2pt solid #000000;
+    padding: 6pt 10pt;
+    margin-bottom: 12pt;
+    background: #FFF1F2 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-allergies-box .allergy-title {
+    font-size: 9pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: #9F1239 !important;
+  }
+
+  .print-allergies-box .allergy-list {
+    font-size: 12pt;
+    font-weight: 700;
+    margin-top: 2pt;
+  }
+
+  /* Medication Schedule Table */
+  .print-table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin-bottom: 12pt !important;
+  }
+
+  .print-table th {
+    border-top: 1.5pt solid #000000;
+    border-bottom: 1.5pt solid #000000;
+    padding: 4pt 6pt !important;
+    font-size: 9pt !important;
+    text-transform: uppercase;
+    text-align: left;
+    background: #E2E8F0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-table td {
+    border-bottom: 1pt solid #CBD5E1;
+    padding: 5pt 6pt !important;
+    font-size: 10pt !important;
+    vertical-align: top;
+  }
+
+  .print-table tr:nth-child(even) td {
+    background: #F8FAFC !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Contacts Footer */
+  .print-footer-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 10pt;
+    margin-top: 10pt;
+    padding-top: 8pt;
+    border-top: 1.5pt solid #000000;
+  }
+
+  .print-footer-box {
+    border: 1pt solid #000000;
+    padding: 6pt;
+  }
+
+  .print-footer-box h4 {
+    font-size: 9pt;
+    margin-bottom: 3pt;
+    text-transform: uppercase;
+  }
+
+  .print-footer-box p {
+    font-size: 10pt;
+    margin: 0;
+  }
+
+  .print-disclaimer {
+    margin-top: 12pt;
+    font-size: 7.5pt !important;
+    color: #475569 !important;
+    text-align: center;
+  }
+}

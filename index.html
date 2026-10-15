@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en" data-scale="standard">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CareDose — Medication Schedule & Drug Interaction Watchdog</title>
+    <meta name="description" content="Local-first accessible medication manager for caregivers and seniors with automated drug-drug interaction safety checks and 1-click printable emergency fridge sheet." />
+    
+    <!-- Modern Accessible Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="header-mount"></div>
+    <main id="main-content" class="container" tabindex="-1">
+      <div id="view-mount"></div>
+    </main>
+
+    <footer class="no-print" style="margin-top: auto; padding: 2rem 1rem; border-top: 1px solid var(--border-light); text-align: center; font-size: 0.8125rem; color: var(--text-muted); background: var(--bg-surface);">
+      <div class="container" style="padding: 0;">
+        <p><strong>CareDose</strong> • Private & Local-First Patient Safety System</p>
+        <p style="margin-top: 0.25rem;">Data is stored securely on this device. Always confirm adverse interaction risks with your primary physician or licensed pharmacist.</p>
+      </div>
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
