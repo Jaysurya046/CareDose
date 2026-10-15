@@ -1,0 +1,531 @@
+/* ==========================================================================
+   CareDose — Prescription Scan & Verification UI
+   Complies with WCAG 2.2 AA, Anti-Slop Design Language, and Local-First UX
+   ========================================================================== */
+
+/* Modal Backdrop & Outer Container */
+.rx-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+.rx-modal-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-main);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  width: 100%;
+  max-width: 1200px;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.rx-modal-card.upload-dialog {
+  max-width: 640px;
+}
+
+/* Modal Header */
+.rx-modal-header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background: var(--bg-surface);
+}
+
+.rx-modal-title-group h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0;
+}
+
+.rx-modal-title-group p {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+  margin-bottom: 0;
+}
+
+.rx-modal-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.rx-modal-close-btn:hover {
+  background: var(--bg-surface-alt);
+  color: var(--text-main);
+}
+
+/* Upload & Dropzone Area */
+.rx-upload-body {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  overflow-y: auto;
+}
+
+.rx-dropzone {
+  border: 2px dashed var(--border-main);
+  border-radius: var(--radius-md);
+  padding: 2.5rem 1.5rem;
+  text-align: center;
+  background: var(--bg-surface-alt);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.rx-dropzone:hover,
+.rx-dropzone.is-dragover {
+  border-color: var(--primary-teal);
+  background: #f0fdfa;
+}
+
+.rx-dropzone-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #e6fffa;
+  color: var(--primary-teal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rx-dropzone-text h3 {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin-bottom: 0.25rem;
+}
+
+.rx-dropzone-text p {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.rx-upload-actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+/* Image Previews & Preprocessing Controls */
+.rx-preview-container {
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  background: var(--bg-surface-alt);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.rx-preview-box {
+  width: 100%;
+  height: 240px;
+  background: #0f172a;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.rx-preview-box img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.rx-preproc-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* Progress & Status Screen */
+.rx-progress-wrap {
+  padding: 2.5rem 1.5rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.rx-progress-bar-bg {
+  width: 100%;
+  max-width: 400px;
+  height: 10px;
+  background: var(--border-light);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.rx-progress-bar-fill {
+  height: 100%;
+  background: var(--primary-teal);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.rx-progress-status {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+/* ==========================================================================
+   Two-Column Review Workspace (Desktop & Tablet)
+   ========================================================================== */
+.rx-review-workspace {
+  display: grid;
+  grid-template-columns: 1fr 1.25fr;
+  height: calc(90vh - 140px);
+  overflow: hidden;
+}
+
+/* Left Pane: Document Viewport */
+.rx-doc-pane {
+  border-right: 1px solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+  background: #1e293b;
+  position: relative;
+  overflow: hidden;
+}
+
+.rx-doc-toolbar {
+  padding: 0.75rem 1rem;
+  background: #0f172a;
+  color: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border-bottom: 1px solid #334155;
+  z-index: 10;
+}
+
+.rx-doc-viewport {
+  flex: 1;
+  position: relative;
+  overflow: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 1.5rem;
+  background: #0b1120;
+}
+
+.rx-canvas-stage {
+  position: relative;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  border: 1px solid #334155;
+  background: #ffffff;
+}
+
+.rx-canvas-stage img {
+  display: block;
+  user-select: none;
+}
+
+.rx-highlight-overlay {
+  position: absolute;
+  border: 2.5px solid var(--primary-teal);
+  background: rgba(15, 118, 110, 0.18);
+  box-shadow: 0 0 12px rgba(15, 118, 110, 0.5);
+  border-radius: 4px;
+  pointer-events: none;
+  transition: all 0.2s ease;
+  z-index: 5;
+}
+
+/* Right Pane: Medication Candidates */
+.rx-review-pane {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  background: var(--bg-surface);
+  padding: 1.25rem;
+  gap: 1.25rem;
+}
+
+.rx-notice-banner {
+  padding: 0.875rem 1rem;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  line-height: 1.45;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.rx-notice-banner.notice-caution {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+}
+
+.rx-notice-banner.notice-critical {
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  color: #9f1239;
+}
+
+.rx-notice-banner.notice-info {
+  background: #f0fdfa;
+  border: 1px solid #ccfbf1;
+  color: #115e59;
+}
+
+/* Medication Candidate Card */
+.rx-candidate-card {
+  border: 1.5px solid var(--border-main);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  overflow: hidden;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.rx-candidate-card.is-selected {
+  border-color: var(--primary-teal);
+  box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.2);
+}
+
+.rx-candidate-card.is-excluded {
+  opacity: 0.6;
+  background: var(--bg-surface-alt);
+  border-style: dashed;
+}
+
+.rx-card-header {
+  padding: 0.875rem 1.25rem;
+  background: var(--bg-surface-alt);
+  border-bottom: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.rx-snippet-quote {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-light);
+  max-width: 450px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rx-card-body {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.rx-field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.rx-field-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.rx-field-label-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rx-field-label-wrap label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+/* Field Status Badges */
+.rx-field-status {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  padding: 0.15rem 0.45rem;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.rx-field-status.status-extracted {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
+.rx-field-status.status-uncertain {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+
+.rx-field-status.status-unreadable {
+  background: #ffe4e6;
+  color: #be123c;
+  border: 1px solid #fda4af;
+}
+
+.rx-field-status.status-confirmed {
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #86efac;
+}
+
+.rx-field-status.status-verified {
+  background: #ccfbf1;
+  color: #115e59;
+  border: 1px solid #5eead4;
+}
+
+/* Professional Clarification Section */
+.rx-clarification-box {
+  background: #f0fdfa;
+  border: 1px solid #99f6e4;
+  border-radius: var(--radius-sm);
+  padding: 0.875rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.rx-clarification-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #0f766e;
+  cursor: pointer;
+}
+
+/* Modal Footer Actions */
+.rx-modal-footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border-light);
+  background: var(--bg-surface);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.rx-footer-summary {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.rx-footer-summary strong {
+  color: var(--text-main);
+}
+
+.rx-footer-btns {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* Mobile Tabs switcher */
+.rx-mobile-tabs {
+  display: none;
+  grid-template-columns: 1fr 1fr;
+  border-bottom: 1px solid var(--border-light);
+  background: var(--bg-surface-alt);
+}
+
+.rx-mobile-tab-btn {
+  padding: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  min-height: 48px;
+}
+
+.rx-mobile-tab-btn.is-active {
+  color: var(--primary-teal);
+  border-bottom-color: var(--primary-teal);
+  background: var(--bg-surface);
+}
+
+/* Responsive adjustments */
+@media (max-width: 900px) {
+  .rx-review-workspace {
+    grid-template-columns: 1fr;
+    height: calc(88vh - 160px);
+  }
+
+  .rx-mobile-tabs {
+    display: grid;
+  }
+
+  .rx-doc-pane {
+    border-right: none;
+  }
+
+  .rx-doc-pane.mobile-hidden,
+  .rx-review-pane.mobile-hidden {
+    display: none !important;
+  }
+
+  .rx-field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .rx-upload-actions-grid {
+    grid-template-columns: 1fr;
+  }
+}

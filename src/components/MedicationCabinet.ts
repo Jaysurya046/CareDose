@@ -2,6 +2,7 @@ import { medStore } from '../store/medStore';
 import { createPillBadgeHTML } from './PillBadge';
 import { openMedicationModal } from './MedicationModal';
 import { renderSafetyWatchdogBanner } from './SafetyWatchdogBanner';
+import { openPrescriptionUploadModal } from './PrescriptionUploadModal';
 
 export function renderMedicationCabinet(container: HTMLElement): void {
   const allMeds = medStore.getMedications();
@@ -47,13 +48,22 @@ export function renderMedicationCabinet(container: HTMLElement): void {
               placeholder="Search by brand name, active ingredient, or strength..." 
             />
           </div>
-          <button type="button" class="btn btn-primary" id="btn-add-med">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
-              <line x1="12" y1="5" x2="12" y2="19"/>
-              <line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            <span>Add Medication</span>
-          </button>
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button type="button" class="btn btn-secondary" id="btn-scan-rx" title="Scan or photograph prescription document">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                <circle cx="12" cy="13" r="4"></circle>
+              </svg>
+              <span>Scan Prescription</span>
+            </button>
+            <button type="button" class="btn btn-primary" id="btn-add-med">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              <span>Add Medication</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -181,6 +191,11 @@ export function renderMedicationCabinet(container: HTMLElement): void {
                   <div class="med-name-primary">
                     <strong>${med.name}</strong> 
                     <span class="med-strength-badge">${med.dosage}</span>
+                    ${med.isPrescriptionImport ? `
+                      <span class="badge" style="background: #f0fdfa; border: 1px solid #99f6e4; color: #0f766e; font-size: 0.6875rem;" title="Imported from prescription document and verified by user">
+                        User-Confirmed Rx
+                      </span>
+                    ` : ''}
                   </div>
                   ${med.genericName ? `<div class="med-generic-label">${med.genericName} (${med.form})</div>` : ''}
                 </td>
@@ -227,6 +242,11 @@ export function renderMedicationCabinet(container: HTMLElement): void {
                   <div class="med-name-primary">
                     <strong>${med.name}</strong>
                     <span class="med-strength-badge">${med.dosage}</span>
+                    ${med.isPrescriptionImport ? `
+                      <span class="badge" style="background: #f0fdfa; border: 1px solid #99f6e4; color: #0f766e; font-size: 0.6875rem;">
+                        User-Confirmed Rx
+                      </span>
+                    ` : ''}
                   </div>
                   ${med.genericName ? `<div class="med-generic-label">${med.genericName} • ${med.form}</div>` : ''}
                 </div>
@@ -292,6 +312,10 @@ export function renderMedicationCabinet(container: HTMLElement): void {
 
   searchInput.addEventListener('input', () => {
     renderItems(searchInput.value);
+  });
+
+  container.querySelector('#btn-scan-rx')?.addEventListener('click', () => {
+    openPrescriptionUploadModal(() => renderMedicationCabinet(container));
   });
 
   container.querySelector('#btn-add-med')?.addEventListener('click', () => {

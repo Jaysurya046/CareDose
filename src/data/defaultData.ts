@@ -1,16 +1,16 @@
 import type { Medication, PatientProfile, UserPreferences, ReminderPreferences, ReminderDeliveryState } from '../types';
 
 export const DEFAULT_PROFILE: PatientProfile = {
-  name: 'Eleanor Vance',
-  dob: '1952-04-18',
+  name: 'Tanjiro',
+  dob: '2005-04-18',
   bloodType: 'A+',
   allergies: ['Penicillin (Anaphylaxis)', 'Sulfa Drugs (Severe Rash)'],
-  emergencyContactName: 'Sarah Vance',
-  emergencyContactRelation: 'Daughter',
-  emergencyContactPhone: '(555) 234-5678',
-  primaryDoctorName: 'Dr. Marcus Chen, MD',
-  primaryDoctorPhone: '(555) 890-1234',
-  preferredHospital: 'Mercy Medical Center',
+  emergencyContactName: 'Triganana Dootha',
+  emergencyContactRelation: 'Son',
+  emergencyContactPhone: '(+91 9076545673)',
+  primaryDoctorName: 'Dr. Jaya Ch, MD',
+  primaryDoctorPhone: '(+91 9865457892',
+  preferredHospital: 'AIIMS Raipur',
   notes: 'Fall risk; wears reading glasses and hearing aid in right ear.'
 };
 
