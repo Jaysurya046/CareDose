@@ -1,16 +1,15 @@
 import { medStore } from '../store/medStore';
 import type { FontScale } from '../types';
+import { formatHeaderDate } from '../utils/date';
 
-export function renderHeader(container: HTMLElement, currentTab: string, onTabChange: (tab: string) => void) {
+/**
+ * Renders the top application header with accessibility controls (font scaling & high contrast)
+ * and view navigation tabs.
+ */
+export function renderHeader(container: HTMLElement, currentTab: string, onTabChange: (tab: string) => void): void {
   const profile = medStore.getPatientProfile();
   const prefs = medStore.getPreferences();
-
-  const todayStr = new Date().toLocaleDateString(undefined, {
-    weekday: 'long',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric'
-  });
+  const todayStr = formatHeaderDate(new Date());
 
   container.innerHTML = `
     <header class="app-header no-print">
@@ -28,7 +27,7 @@ export function renderHeader(container: HTMLElement, currentTab: string, onTabCh
                 <span class="brand-title">CareDose</span>
                 <span class="brand-tag">Patient Safety</span>
               </div>
-              <p class="brand-subtitle">For ${profile.name} • ${todayStr}</p>
+              <p class="brand-subtitle">For ${profile.name || 'Patient'} • ${todayStr}</p>
             </div>
           </div>
 
@@ -42,7 +41,7 @@ export function renderHeader(container: HTMLElement, currentTab: string, onTabCh
             </div>
 
             <button type="button" id="contrast-toggle-btn" class="ctrl-btn contrast-btn ${prefs.highContrast ? 'active' : ''}" aria-label="Toggle High Contrast Mode">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                 <circle cx="12" cy="12" r="10"/>
                 <path d="M12 2a10 10 0 0 1 0 20z" fill="currentColor"/>
               </svg>
@@ -54,7 +53,7 @@ export function renderHeader(container: HTMLElement, currentTab: string, onTabCh
         <!-- Navigation Tabs -->
         <nav class="tabs-nav" aria-label="Application sections">
           <button type="button" class="tab-btn ${currentTab === 'timeline' ? 'active' : ''}" data-tab="timeline">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
               <line x1="16" y1="2" x2="16" y2="6"/>
               <line x1="8" y1="2" x2="8" y2="6"/>
@@ -64,7 +63,7 @@ export function renderHeader(container: HTMLElement, currentTab: string, onTabCh
           </button>
 
           <button type="button" class="tab-btn ${currentTab === 'cabinet' ? 'active' : ''}" data-tab="cabinet">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/>
               <path d="m8.5 8.5 7 7"/>
             </svg>
@@ -72,7 +71,7 @@ export function renderHeader(container: HTMLElement, currentTab: string, onTabCh
           </button>
 
           <button type="button" class="tab-btn ${currentTab === 'fridge' ? 'active' : ''}" data-tab="fridge">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <polyline points="6 9 6 2 18 2 18 9"/>
               <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
               <rect x="6" y="14" width="12" height="8"/>

@@ -1,4 +1,3 @@
-import confetti from 'canvas-confetti';
 import { medStore } from '../store/medStore';
 import type { TimeSlot } from '../types';
 import { createPillBadgeHTML } from './PillBadge';
@@ -15,33 +14,32 @@ const SLOTS: SlotConfig[] = [
     key: 'morning',
     label: 'Morning',
     timeEstimate: '8:00 AM',
-    iconSvg: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>`
+    iconSvg: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>`
   },
   {
     key: 'midday',
     label: 'Midday / Lunch',
     timeEstimate: '1:00 PM',
-    iconSvg: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`
+    iconSvg: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`
   },
   {
     key: 'evening',
     label: 'Evening / Dinner',
     timeEstimate: '6:30 PM',
-    iconSvg: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 18a5 5 0 0 0-10 0"/><line x1="12" y1="2" x2="12" y2="9"/><line x1="4.22" y1="10.22" x2="5.64" y2="11.64"/><line x1="1" y1="18" x2="3" y2="18"/><line x1="21" y1="18" x2="23" y2="18"/><line x1="18.36" y1="11.64" x2="19.78" y2="10.22"/><line x1="23" y1="22" x2="1" y2="22"/></svg>`
+    iconSvg: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17 18a5 5 0 0 0-10 0"/><line x1="12" y1="2" x2="12" y2="9"/><line x1="4.22" y1="10.22" x2="5.64" y2="11.64"/><line x1="1" y1="18" x2="3" y2="18"/><line x1="21" y1="18" x2="23" y2="18"/><line x1="18.36" y1="11.64" x2="19.78" y2="10.22"/><line x1="23" y1="22" x2="1" y2="22"/></svg>`
   },
   {
     key: 'bedtime',
     label: 'Bedtime',
     timeEstimate: '10:00 PM',
-    iconSvg: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>`
+    iconSvg: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>`
   }
 ];
 
-export function renderDailyTimeline(container: HTMLElement) {
+export function renderDailyTimeline(container: HTMLElement): void {
   const activeMeds = medStore.getActiveMedications();
   const dailyLog = medStore.getDailyLog();
 
-  // Calculate total scheduled doses across all slots
   let totalDoses = 0;
   let takenDoses = 0;
 
@@ -65,10 +63,10 @@ export function renderDailyTimeline(container: HTMLElement) {
         <section class="timeline-slot empty-slot" aria-labelledby="slot-heading-${slot.key}">
           <div class="slot-header">
             <div class="slot-title-wrap">
-              <span class="slot-icon" aria-hidden="true">${slot.iconSvg}</span>
+              <span class="slot-icon">${slot.iconSvg}</span>
               <div>
                 <h3 id="slot-heading-${slot.key}" class="slot-heading">${slot.label}</h3>
-                <span class="slot-time">Estimated ${slot.timeEstimate}</span>
+                <span class="slot-time">Target ${slot.timeEstimate}</span>
               </div>
             </div>
             <span class="slot-count badge">0 Medications</span>
@@ -86,7 +84,7 @@ export function renderDailyTimeline(container: HTMLElement) {
       return `
         <article class="dose-card ${isTaken ? 'is-taken' : ''}" data-med-id="${med.id}" data-slot="${slot.key}">
           <div class="dose-card-main">
-            <div class="dose-pill-visual" aria-hidden="true">
+            <div class="dose-pill-visual">
               ${createPillBadgeHTML(med.pillVisual, 'large')}
             </div>
             <div class="dose-details">
@@ -97,7 +95,7 @@ export function renderDailyTimeline(container: HTMLElement) {
               </div>
               ${med.genericName ? `<p class="dose-generic">Generic: ${med.genericName}</p>` : ''}
               <div class="dose-instructions-row">
-                ${med.withFood ? `<span class="badge badge-caution">🍽️ Take with food</span>` : `<span class="badge">💧 With water</span>`}
+                ${med.withFood ? `<span class="badge badge-caution">With Food</span>` : `<span class="badge">With Water</span>`}
                 <span class="dose-instruction-text">${med.instructions}</span>
               </div>
             </div>
@@ -107,7 +105,7 @@ export function renderDailyTimeline(container: HTMLElement) {
             ${isTaken ? `
               <div class="taken-status-box">
                 <span class="taken-stamp">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
                     <polyline points="20 6 9 17 4 12"/>
                   </svg>
                   Taken at ${record.timestamp || 'Today'}
@@ -118,7 +116,7 @@ export function renderDailyTimeline(container: HTMLElement) {
               </div>
             ` : `
               <button type="button" class="btn btn-primary btn-take-dose" data-med-id="${med.id}" data-slot="${slot.key}">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
                   <polyline points="20 6 9 17 4 12"/>
                 </svg>
                 <span>Mark as Taken</span>
@@ -133,7 +131,7 @@ export function renderDailyTimeline(container: HTMLElement) {
       <section class="timeline-slot" aria-labelledby="slot-heading-${slot.key}">
         <div class="slot-header">
           <div class="slot-title-wrap">
-            <span class="slot-icon" aria-hidden="true">${slot.iconSvg}</span>
+            <span class="slot-icon">${slot.iconSvg}</span>
             <div>
               <h3 id="slot-heading-${slot.key}" class="slot-heading">${slot.label}</h3>
               <span class="slot-time">Target ${slot.timeEstimate}</span>
@@ -155,7 +153,7 @@ export function renderDailyTimeline(container: HTMLElement) {
         <div class="adherence-header">
           <div>
             <span class="badge ${isAllComplete ? 'badge-safe' : 'badge-caution'}">
-              ${isAllComplete ? '🌟 All Doses Completed' : 'Daily Adherence Tracker'}
+              ${isAllComplete ? 'All Doses Completed' : 'Daily Adherence Tracker'}
             </span>
             <h2 class="adherence-title">
               ${takenDoses} of ${totalDoses} doses recorded today (${percentage}%)
@@ -188,28 +186,7 @@ export function renderDailyTimeline(container: HTMLElement) {
       const target = e.currentTarget as HTMLElement;
       const medId = target.dataset.medId!;
       const slot = target.dataset.slot as TimeSlot;
-      
       medStore.recordDose(medId, slot, true);
-
-      // Check if this action completes all doses
-      const updatedLog = medStore.getDailyLog();
-      let updatedTaken = 0;
-      activeMeds.forEach(m => {
-        m.timeSlots.forEach(s => {
-          if (updatedLog.doses[`${m.id}_${s}`]?.taken) updatedTaken++;
-        });
-      });
-
-      if (totalDoses > 0 && updatedTaken === totalDoses) {
-        // Trigger celebratory confetti for the caregiver/patient
-        try {
-          confetti({
-            particleCount: 80,
-            spread: 70,
-            origin: { y: 0.6 }
-          });
-        } catch {}
-      }
     });
   });
 

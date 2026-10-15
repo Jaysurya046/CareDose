@@ -3,7 +3,7 @@ import { createPillBadgeHTML } from './PillBadge';
 import { openMedicationModal } from './MedicationModal';
 import { renderSafetyWatchdogBanner } from './SafetyWatchdogBanner';
 
-export function renderMedicationCabinet(container: HTMLElement) {
+export function renderMedicationCabinet(container: HTMLElement): void {
   const allMeds = medStore.getMedications();
 
   container.innerHTML = `
@@ -18,7 +18,15 @@ export function renderMedicationCabinet(container: HTMLElement) {
             <h2 class="cabinet-title">Medication Cabinet</h2>
             <p class="cabinet-subtitle">Manage prescriptions, over-the-counter supplements, and schedules.</p>
           </div>
-          <span class="badge badge-safe">${allMeds.filter(m => m.isActive).length} Active / ${allMeds.length} Total</span>
+          <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+            <span class="badge badge-safe">${allMeds.filter(m => m.isActive).length} Active / ${allMeds.length} Total</span>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-export-data" title="Export all patient & medication data as JSON file">
+              Export Data
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-clear-data" style="color: var(--status-critical-text);" title="Permanently clear local data">
+              Clear All Data
+            </button>
+          </div>
         </div>
 
         <div class="cabinet-controls-row">
@@ -26,7 +34,7 @@ export function renderMedicationCabinet(container: HTMLElement) {
             <input type="text" id="cabinet-search" class="form-input" placeholder="Search medication or generic..." />
           </div>
           <button type="button" class="btn btn-primary" id="btn-add-med">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
               <line x1="12" y1="5" x2="12" y2="19"/>
               <line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
@@ -49,6 +57,30 @@ export function renderMedicationCabinet(container: HTMLElement) {
       openMedicationModal(undefined, () => renderMedicationCabinet(container));
     });
   }
+
+  // Export Data Handler
+  container.querySelector('#btn-export-data')?.addEventListener('click', () => {
+    const dataStr = medStore.exportData();
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `caredose-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+
+  // Clear Local Data Handler
+  container.querySelector('#btn-clear-data')?.addEventListener('click', () => {
+    if (confirm('Are you sure you want to permanently erase all locally stored patient data and medications? This action cannot be undone.')) {
+      if (confirm('Please confirm once more: All local data will be reset.')) {
+        medStore.resetAllData();
+        renderMedicationCabinet(container);
+      }
+    }
+  });
 
   // Render Items based on search
   const listContainer = container.querySelector('#cabinet-items-container') as HTMLElement;
@@ -165,12 +197,10 @@ export function renderMedicationCabinet(container: HTMLElement) {
 
   renderItems();
 
-  // Search input event
   searchInput.addEventListener('input', () => {
     renderItems(searchInput.value);
   });
 
-  // Add Medication Button
   container.querySelector('#btn-add-med')?.addEventListener('click', () => {
     openMedicationModal(undefined, () => renderMedicationCabinet(container));
   });

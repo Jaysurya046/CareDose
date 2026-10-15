@@ -1,25 +1,26 @@
 import { medStore } from '../store/medStore';
-import type { Medication, PillShape, PillColor, TimeSlot } from '../types';
+import type { Medication, TimeSlot, PillVisual } from '../types';
 import { searchDrugNames, type DrugSuggestion } from '../services/rxnorm';
-import { createPillBadgeHTML } from './PillBadge';
+import { renderPillVisualSelector } from './PillVisualSelector';
 
-export function openMedicationModal(existingMed?: Medication, onSaved?: () => void) {
-  // Remove any existing modal
+/**
+ * Accessible modal dialog for adding or editing a prescription or OTC medication.
+ */
+export function openMedicationModal(existingMed?: Medication, onSaved?: () => void): void {
   document.querySelector('.modal-overlay')?.remove();
 
   const isEdit = !!existingMed;
-  let currentShape: PillShape = existingMed?.pillVisual?.shape || 'round';
-  let currentColor: PillColor = existingMed?.pillVisual?.color || 'white';
-  let currentSlots: Set<TimeSlot> = new Set(existingMed?.timeSlots || ['morning']);
+  let visualState: PillVisual = {
+    shape: existingMed?.pillVisual?.shape || 'round',
+    color: existingMed?.pillVisual?.color || 'white'
+  };
+  const currentSlots: Set<TimeSlot> = new Set(existingMed?.timeSlots || ['morning']);
 
   const modalOverlay = document.createElement('div');
   modalOverlay.className = 'modal-overlay';
   modalOverlay.setAttribute('role', 'dialog');
   modalOverlay.setAttribute('aria-modal', 'true');
   modalOverlay.setAttribute('aria-labelledby', 'modal-title');
-
-  const shapes: PillShape[] = ['round', 'capsule', 'oval', 'split'];
-  const colors: PillColor[] = ['white', 'pink', 'blue', 'yellow', 'orange', 'green', 'purple', 'red'];
 
   modalOverlay.innerHTML = `
     <div class="modal-dialog">
@@ -44,7 +45,7 @@ export function openMedicationModal(existingMed?: Medication, onSaved?: () => vo
             autocomplete="off"
           />
           <div id="autocomplete-dropdown" class="autocomplete-dropdown" style="display: none;"></div>
-          <span class="form-hint">Type to search the US NLM RxNorm database or common drug library.</span>
+          <span class="form-hint">Type to search the offline drug catalog or remote RxNorm API.</span>
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
@@ -105,49 +106,17 @@ export function openMedicationModal(existingMed?: Medication, onSaved?: () => vo
         <div class="form-group">
           <label class="slot-check-item" style="padding: 0.5rem 0;">
             <input type="checkbox" id="with-food-check" ${existingMed?.withFood ? 'checked' : ''} />
-            <strong>🍽️ Take with food (requires a meal or snack)</strong>
+            <span><strong>Take with food</strong> (requires meal or snack)</span>
           </label>
         </div>
 
         <div class="form-group">
-          <label for="drug-instructions-input" class="form-label">Patient Instructions & Notes</label>
+          <label for="drug-instructions-input" class="form-label">Patient Instructions &amp; Notes</label>
           <textarea id="drug-instructions-input" class="form-textarea" placeholder="e.g. Take with a full glass of water. Do not crush.">${existingMed?.instructions || ''}</textarea>
         </div>
 
-        <!-- Physical Pill Visual Identifier Engine -->
-        <div class="form-group pill-visualizer-box">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-            <label class="form-label" style="margin-bottom: 0;">Physical Pill Appearance Badge</label>
-            <div id="live-pill-preview" style="display: flex; align-items: center; gap: 0.5rem;">
-              <span style="font-size: 0.8125rem; color: var(--text-muted);">Preview:</span>
-              ${createPillBadgeHTML({ shape: currentShape, color: currentColor }, 'large')}
-            </div>
-          </div>
-          
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
-            <div>
-              <span class="form-hint" style="display: block; margin-bottom: 0.25rem;">Pill Shape:</span>
-              <div class="shape-selector" id="shape-selector">
-                ${shapes.map(s => `
-                  <button type="button" class="btn btn-secondary btn-sm shape-opt ${s === currentShape ? 'selected' : ''}" data-shape="${s}">
-                    ${s}
-                  </button>
-                `).join('')}
-              </div>
-            </div>
-
-            <div>
-              <span class="form-hint" style="display: block; margin-bottom: 0.25rem;">Pill Color:</span>
-              <div class="color-selector" id="color-selector">
-                ${colors.map(c => `
-                  <button type="button" class="color-opt ${c === currentColor ? 'selected' : ''}" data-color="${c}" title="${c}" aria-label="${c} color">
-                    <span class="pill-token shape-round pill-color-${c}"></span>
-                  </button>
-                `).join('')}
-              </div>
-            </div>
-          </div>
-        </div>
+        <!-- Pill Appearance Selector Slot -->
+        <div class="form-group pill-visualizer-box" id="pill-visualizer-slot"></div>
 
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" id="btn-cancel-modal">Cancel</button>
@@ -161,6 +130,12 @@ export function openMedicationModal(existingMed?: Medication, onSaved?: () => vo
 
   document.body.appendChild(modalOverlay);
 
+  // Bind Pill Visual Selector
+  const visualSlot = modalOverlay.querySelector('#pill-visualizer-slot') as HTMLElement;
+  const getVisual = renderPillVisualSelector(visualSlot, visualState, (v) => {
+    visualState = v;
+  });
+
   // Close handlers
   const closeModal = () => modalOverlay.remove();
   modalOverlay.querySelector('#btn-close-modal')?.addEventListener('click', closeModal);
@@ -173,11 +148,10 @@ export function openMedicationModal(existingMed?: Medication, onSaved?: () => vo
   const nameInput = modalOverlay.querySelector('#drug-name-input') as HTMLInputElement;
   const genericInput = modalOverlay.querySelector('#drug-generic-input') as HTMLInputElement;
   const dropdown = modalOverlay.querySelector('#autocomplete-dropdown') as HTMLElement;
-
-  let debounceTimer: any = null;
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   nameInput.addEventListener('input', () => {
-    clearTimeout(debounceTimer);
+    if (debounceTimer) clearTimeout(debounceTimer);
     const query = nameInput.value.trim();
     if (query.length < 2) {
       dropdown.style.display = 'none';
@@ -213,42 +187,11 @@ export function openMedicationModal(existingMed?: Medication, onSaved?: () => vo
     }, 250);
   });
 
-  // Close dropdown when clicking outside
+  // Close dropdown on outside click
   document.addEventListener('click', (e) => {
     if (!dropdown.contains(e.target as Node) && e.target !== nameInput) {
       dropdown.style.display = 'none';
     }
-  });
-
-  // Live Pill Preview Updates
-  const previewContainer = modalOverlay.querySelector('#live-pill-preview')!;
-  const updatePreview = () => {
-    previewContainer.innerHTML = `
-      <span style="font-size: 0.8125rem; color: var(--text-muted);">Preview:</span>
-      ${createPillBadgeHTML({ shape: currentShape, color: currentColor }, 'large')}
-    `;
-  };
-
-  // Shape clicks
-  modalOverlay.querySelectorAll('.shape-opt').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      modalOverlay.querySelectorAll('.shape-opt').forEach(b => b.classList.remove('selected'));
-      const target = e.currentTarget as HTMLElement;
-      target.classList.add('selected');
-      currentShape = target.dataset.shape as PillShape;
-      updatePreview();
-    });
-  });
-
-  // Color clicks
-  modalOverlay.querySelectorAll('.color-opt').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      modalOverlay.querySelectorAll('.color-opt').forEach(b => b.classList.remove('selected'));
-      const target = e.currentTarget as HTMLElement;
-      target.classList.add('selected');
-      currentColor = target.dataset.color as PillColor;
-      updatePreview();
-    });
   });
 
   // Form Submission
@@ -266,27 +209,16 @@ export function openMedicationModal(existingMed?: Medication, onSaved?: () => vo
       return;
     }
 
-    const name = nameInput.value.trim();
-    const genericName = genericInput.value.trim() || undefined;
-    const dosage = (modalOverlay.querySelector('#drug-dosage-input') as HTMLInputElement).value.trim();
-    const formVal = (modalOverlay.querySelector('#drug-form-select') as HTMLSelectElement).value;
-    const prescribedBy = (modalOverlay.querySelector('#drug-doctor-input') as HTMLInputElement).value.trim() || undefined;
-    const withFood = (modalOverlay.querySelector('#with-food-check') as HTMLInputElement).checked;
-    const instructions = (modalOverlay.querySelector('#drug-instructions-input') as HTMLTextAreaElement).value.trim();
-
     const medData = {
-      name,
-      genericName,
-      dosage,
-      form: formVal,
+      name: nameInput.value.trim(),
+      genericName: genericInput.value.trim() || undefined,
+      dosage: (modalOverlay.querySelector('#drug-dosage-input') as HTMLInputElement).value.trim(),
+      form: (modalOverlay.querySelector('#drug-form-select') as HTMLSelectElement).value,
       timeSlots: selectedSlots,
-      withFood,
-      instructions: instructions || 'Take as prescribed.',
-      pillVisual: {
-        shape: currentShape,
-        color: currentColor
-      },
-      prescribedBy,
+      withFood: (modalOverlay.querySelector('#with-food-check') as HTMLInputElement).checked,
+      instructions: (modalOverlay.querySelector('#drug-instructions-input') as HTMLTextAreaElement).value.trim() || 'Take as prescribed.',
+      pillVisual: getVisual(),
+      prescribedBy: (modalOverlay.querySelector('#drug-doctor-input') as HTMLInputElement).value.trim() || undefined,
       isActive: true
     };
 

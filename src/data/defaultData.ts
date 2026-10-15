@@ -1,0 +1,65 @@
+import type { Medication, PatientProfile, UserPreferences } from '../types';
+
+export const DEFAULT_PROFILE: PatientProfile = {
+  name: 'Eleanor Vance',
+  dob: '1952-04-18',
+  bloodType: 'A+',
+  allergies: ['Penicillin (Anaphylaxis)', 'Sulfa Drugs (Severe Rash)'],
+  emergencyContactName: 'Sarah Vance',
+  emergencyContactRelation: 'Daughter',
+  emergencyContactPhone: '(555) 234-5678',
+  primaryDoctorName: 'Dr. Marcus Chen, MD',
+  primaryDoctorPhone: '(555) 890-1234',
+  preferredHospital: 'Mercy Medical Center',
+  notes: 'Fall risk; wears reading glasses and hearing aid in right ear.'
+};
+
+export const DEFAULT_MEDICATIONS: Medication[] = [
+  {
+    id: 'med-1',
+    name: 'Lisinopril',
+    genericName: 'Lisinopril',
+    dosage: '20 mg',
+    form: 'Tablet',
+    timeSlots: ['morning'],
+    withFood: false,
+    instructions: 'Take 1 tablet every morning with a full glass of water. Monitor blood pressure weekly.',
+    pillVisual: { shape: 'round', color: 'pink' },
+    prescribedBy: 'Dr. Marcus Chen',
+    isActive: true,
+    createdAt: '2026-01-01T08:00:00.000Z'
+  },
+  {
+    id: 'med-2',
+    name: 'Metformin',
+    genericName: 'Metformin HCL',
+    dosage: '500 mg',
+    form: 'Tablet',
+    timeSlots: ['morning', 'evening'],
+    withFood: true,
+    instructions: 'Take with morning and evening meals to minimize stomach upset.',
+    pillVisual: { shape: 'oval', color: 'white' },
+    prescribedBy: 'Dr. Marcus Chen',
+    isActive: true,
+    createdAt: '2026-01-01T08:00:00.000Z'
+  },
+  {
+    id: 'med-3',
+    name: 'Atorvastatin',
+    genericName: 'Atorvastatin Calcium',
+    dosage: '20 mg',
+    form: 'Tablet',
+    timeSlots: ['bedtime'],
+    withFood: false,
+    instructions: 'Take at bedtime. Avoid grapefruit products while taking this medication.',
+    pillVisual: { shape: 'capsule', color: 'blue' },
+    prescribedBy: 'Dr. Marcus Chen',
+    isActive: true,
+    createdAt: '2026-01-01T08:00:00.000Z'
+  }
+];
+
+export const DEFAULT_PREFERENCES: UserPreferences = {
+  fontScale: 'standard',
+  highContrast: false
+};

@@ -1,11 +1,19 @@
 import { medStore } from '../store/medStore';
-import { evaluateInteractions } from '../engine/watchdog';
+import { evaluateSafetyProfile } from '../engine/watchdog';
 
-export function renderSafetyWatchdogBanner(container: HTMLElement, onQuickAddMed?: (name: string, generic: string) => void) {
+/**
+ * Renders the interaction safety status banner with calm, factual clinical warnings.
+ * Explicitly distinguishes known alerts from absence of evidence in the offline dataset.
+ */
+export function renderSafetyWatchdogBanner(
+  container: HTMLElement,
+  onQuickAddMed?: (name: string, generic: string) => void
+): void {
   const activeMeds = medStore.getActiveMedications();
-  const alerts = evaluateInteractions(activeMeds);
+  const evaluation = evaluateSafetyProfile(activeMeds);
+  const alerts = evaluation.alerts;
 
-  if (activeMeds.length < 2) {
+  if (evaluation.status === 'insufficient_medications') {
     container.innerHTML = `
       <div class="safety-banner safe no-print">
         <div class="safety-banner-icon safe-icon" aria-hidden="true">
@@ -17,16 +25,16 @@ export function renderSafetyWatchdogBanner(container: HTMLElement, onQuickAddMed
         <div class="safety-banner-content">
           <div class="safety-title-row">
             <h3 class="safety-title">Interaction Watchdog Active</h3>
-            <span class="badge badge-safe">Monitoring ${activeMeds.length} Active Med</span>
+            <span class="badge badge-safe">Monitoring ${activeMeds.length} Active Medication</span>
           </div>
-          <p class="safety-desc">Add at least two medications to run real-time pharmacological cross-interaction checks.</p>
+          <p class="safety-desc">Add at least two medications to evaluate potential drug-drug interactions against the curated reference safety matrix.</p>
         </div>
       </div>
     `;
     return;
   }
 
-  if (alerts.length === 0) {
+  if (evaluation.status === 'none_found_in_dataset') {
     container.innerHTML = `
       <div class="safety-banner safe no-print">
         <div class="safety-banner-icon safe-icon" aria-hidden="true">
@@ -37,10 +45,10 @@ export function renderSafetyWatchdogBanner(container: HTMLElement, onQuickAddMed
         </div>
         <div class="safety-banner-content">
           <div class="safety-title-row">
-            <h3 class="safety-title">No Known Critical Drug Interactions Detected</h3>
-            <span class="badge badge-safe">All ${activeMeds.length} Meds Compatible</span>
+            <h3 class="safety-title">No Known Interactions in Local Safety Dataset</h3>
+            <span class="badge badge-safe">${activeMeds.length} Meds Assessed</span>
           </div>
-          <p class="safety-desc">Cross-referenced against clinical matrices (anticoagulants, NSAIDs, ACE inhibitors, statins, and SSRIs). Always verify with your pharmacist.</p>
+          <p class="safety-desc">No interactions were identified in the offline clinical dataset. <em>Note: Lack of an alert does not guarantee safety.</em> Always confirm regimens with your doctor or pharmacist.</p>
         </div>
         <div class="safety-banner-action">
           <button type="button" class="btn btn-secondary btn-sm" id="btn-demo-conflict" title="Add a conflicting medication to demo the safety watchdog">
@@ -52,7 +60,6 @@ export function renderSafetyWatchdogBanner(container: HTMLElement, onQuickAddMed
 
     const demoBtn = container.querySelector('#btn-demo-conflict');
     demoBtn?.addEventListener('click', () => {
-      // Add Aspirin or Potassium to trigger an alert with Lisinopril
       if (onQuickAddMed) {
         onQuickAddMed('Potassium Chloride', 'Potassium Supplement');
       } else {
@@ -73,7 +80,7 @@ export function renderSafetyWatchdogBanner(container: HTMLElement, onQuickAddMed
     return;
   }
 
-  // Has Alerts!
+  // Active interaction alerts detected
   const hasCritical = alerts.some(a => a.severity === 'critical');
   const bannerClass = hasCritical ? 'critical' : 'caution';
   const iconColor = hasCritical ? 'var(--status-critical-text)' : 'var(--status-caution-text)';
@@ -85,7 +92,7 @@ export function renderSafetyWatchdogBanner(container: HTMLElement, onQuickAddMed
           <span class="badge badge-${alert.severity}">${alert.severity.toUpperCase()}</span>
           <strong class="alert-item-title">${alert.title}</strong>
         </div>
-        <div class="alert-drugs-tag">Between: <u>${alert.drugA}</u> & <u>${alert.drugB}</u></div>
+        <div class="alert-drugs-tag">Between: <u>${alert.drugA}</u> &amp; <u>${alert.drugB}</u></div>
       </div>
       <p class="alert-item-desc">${alert.description}</p>
       <div class="alert-item-action">
@@ -106,7 +113,7 @@ export function renderSafetyWatchdogBanner(container: HTMLElement, onQuickAddMed
       <div class="safety-banner-content">
         <div class="safety-title-row">
           <h3 class="safety-title">${hasCritical ? 'Critical Drug-Drug Interaction Warning' : 'Medication Interaction Precaution'}</h3>
-          <span class="badge badge-${hasCritical ? 'critical' : 'caution'}">${alerts.length} Potential Conflict${alerts.length > 1 ? 's' : ''} Found</span>
+          <span class="badge badge-${hasCritical ? 'critical' : 'caution'}">${alerts.length} Potential Conflict${alerts.length > 1 ? 's' : ''} Identified</span>
         </div>
         <div class="alerts-list">
           ${alertsHTML}
