@@ -6,7 +6,8 @@
  * 2. Drug database matches are SUGGESTIONS, not prescription verification.
  * 3. Never infer missing strength from marketed strengths.
  * 4. Never infer dose quantity from tablet strength.
- * 5. Unresolved ambiguity blocks active scheduling.
+ * 5. Document headers, demographics, and form codes MUST NOT generate medication candidates.
+ * 6. Unresolved ambiguity blocks active scheduling.
  */
 
 import type {
@@ -14,10 +15,13 @@ import type {
   PrescriptionMedicationDraft,
   TextRecognitionSegment,
   TimeSlot,
-  BoundingBox
+  BoundingBox,
+  RecognitionDiagnostics,
+  CandidateEvaluation
 } from '../types';
 import { COMMON_DRUG_CATALOG, type DrugCatalogEntry } from '../data/drugCatalog';
 import { generateLocalId } from '../utils/sanitize';
+import { segmentDocumentIntoRegions, hasMedicationEvidence } from './documentLayout';
 
 interface ParsedBlockResult {
   name: string | null;
@@ -42,6 +46,20 @@ interface ParsedBlockResult {
   boundingBox?: BoundingBox;
 }
 
+// Administrative and layout words that must NEVER be extracted as medication names
+const NON_MEDICATION_WORDS = new Set([
+  'dd', 'form', 'prescription', 'dod', 'patient', 'name', 'date', 'dob',
+  'address', 'clinic', 'hospital', 'doctor', 'physician', 'prescriber',
+  'pharmacy', 'department', 'dispensary', 'medical', 'center', 'signature',
+  'order', 'item', 'refill', 'refills', 'generic', 'substitution', 'warning',
+  'label', 'instructions', 'take', 'tk', 'give', 'tablet', 'tablets', 'tab', 'tabs',
+  'capsule', 'capsules', 'cap', 'caps', 'pill', 'pills', 'drop', 'drops',
+  'puff', 'puffs', 'unit', 'units', 'ml', 'mg', 'mcg', 'gm', 'dose', 'daily',
+  'times', 'sign', 'sig', 'disp', 'dispense', 'ssn', 'sponsor', 'po', 'prn',
+  'bid', 'tid', 'qid', 'qd', 'qhs', 'ward', 'bed', 'room', 'age', 'sex',
+  'allergies', 'allergy', 'caution'
+]);
+
 /**
  * Searches the local offline catalog for suggestions without auto-selecting.
  */
@@ -57,64 +75,80 @@ export function findCatalogSuggestions(query: string): DrugCatalogEntry[] {
 }
 
 /**
- * Splits raw OCR or PDF text into distinct medication line blocks.
+ * Splits raw OCR or PDF text into distinct medication line blocks using document layout awareness.
+ * Explicitly groups multiline directions (Sig/Disp) with the preceding drug entry.
  */
-export function segmentPrescriptionBlocks(rawText: string): string[] {
+export function segmentPrescriptionBlocks(rawText: string, segments: TextRecognitionSegment[] = []): string[] {
   if (!rawText || !rawText.trim()) return [];
 
-  // Normalize line breaks
-  const cleaned = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  const lines = cleaned.split('\n').map(l => l.trim()).filter(Boolean);
-
+  const regions = segmentDocumentIntoRegions(rawText, segments);
   const blocks: string[] = [];
-  let currentBlock: string[] = [];
+  let currentBlockLines: string[] = [];
 
-  // Common prescription item delimiters: "1.", "2.", "Rx", "Tab", "#"
+  // Item delimiter regex (e.g. "1. ", "2) ", "Rx:", "Item 1:")
   const itemHeaderRegex = /^(?:(?:\d+[\.\)]|Rx:?|Item\s*\d+:?|#\d+:?)\s+)/i;
+  // Continuation lines: "Sig:", "Take", "Then", "Disp:", "Refills:", "1 tab", "#60"
+  const continuationRegex = /^(?:sig\s*:|take\b|tk\b|give\b|then\b|followed\s+by\b|decrease\b|increase\b|taper\b|dispense\b|disp\s*:|refills?\s*:|with\s+food|do\s+not\s+crush|for\s+\d+|after\b|until\b|apply\b|instill\b|inhale\b|inject\b|#\s*\d+|\d+(?:-\d+)?\s*(?:tabs?|tablets?|caps?|capsules?|puffs?|drops?|ml|pills?|teaspoons?|tbs|tbsp|g)\b)/i;
 
-  for (const line of lines) {
-    // Ignore standalone clinic/administrative header lines if they have no drug or prescriber info
-    if (/^(?:clinic|rx\s+pad|medical\s+center|patient|dob|address|phone|dea)\b/i.test(line) &&
-        !line.match(/\d+\s*(?:mg|mcg|ml|mEq)/i)) {
+  for (const reg of regions) {
+    const text = reg.text.trim();
+    if (!text) continue;
+
+    // Discard non-prescription regions (headers, demographics, boilerplate)
+    if (reg.zone === 'document_header' || reg.zone === 'patient_demographics' || reg.zone === 'administrative_boilerplate') {
+      if (currentBlockLines.length > 0) {
+        blocks.push(currentBlockLines.join('\n'));
+        currentBlockLines = [];
+      }
       continue;
     }
 
-    if (itemHeaderRegex.test(line)) {
-      if (currentBlock.length > 0) {
-        const textSoFar = currentBlock.join('\n');
-        // Only push pre-existing block if it contains medication signals
-        if (/\b(?:mg|mcg|ml|mEq|tablet|capsule|take|daily|bid|tid)\b/i.test(textSoFar) ||
-            COMMON_DRUG_CATALOG.some(d => textSoFar.toLowerCase().includes(d.name.toLowerCase()))) {
-          blocks.push(textSoFar);
-        }
+    // Prescriber footer line: finish current block, but do not start a medication block
+    if (reg.zone === 'prescriber_footer') {
+      if (currentBlockLines.length > 0) {
+        blocks.push(currentBlockLines.join('\n'));
+        currentBlockLines = [];
       }
-      currentBlock = [line];
+      continue;
+    }
+
+    // If line starts with a new numbered/Rx item
+    if (itemHeaderRegex.test(text)) {
+      if (currentBlockLines.length > 0) {
+        blocks.push(currentBlockLines.join('\n'));
+      }
+      currentBlockLines = [text];
+    } else if (currentBlockLines.length > 0 && (continuationRegex.test(text) || !hasMedicationEvidence(text).hasEvidence)) {
+      // Continuation of previous medication block (e.g. multiline Sig / directions)
+      currentBlockLines.push(text);
     } else {
-      currentBlock.push(line);
+      // Line is in prescription body or has medication evidence
+      const medCheck = hasMedicationEvidence(text);
+      if (medCheck.hasEvidence) {
+        if (currentBlockLines.length > 0) {
+          blocks.push(currentBlockLines.join('\n'));
+        }
+        currentBlockLines = [text];
+      } else if (currentBlockLines.length > 0) {
+        currentBlockLines.push(text);
+      }
     }
   }
 
-  if (currentBlock.length > 0) {
-    const textSoFar = currentBlock.join('\n');
-    if (/\b(?:mg|mcg|ml|mEq|tablet|capsule|take|daily|bid|tid)\b/i.test(textSoFar) ||
-        COMMON_DRUG_CATALOG.some(d => textSoFar.toLowerCase().includes(d.name.toLowerCase()))) {
-      blocks.push(textSoFar);
-    }
+  if (currentBlockLines.length > 0) {
+    blocks.push(currentBlockLines.join('\n'));
   }
 
-  // If no numbered blocks detected, group into paragraphs or separate medication lines
-  if (blocks.length <= 1 && lines.length > 1) {
-    const candidateLines = lines.filter(l => 
-      /\b(?:mg|mcg|tablet|capsule|daily|bid|tid|qid|po|take)\b/i.test(l) ||
-      COMMON_DRUG_CATALOG.some(d => l.toLowerCase().includes(d.name.toLowerCase()))
-    );
-
-    if (candidateLines.length > 1) {
+  // Fallback: if no blocks collected via regions, check lines with medication evidence
+  if (blocks.length === 0) {
+    const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const candidateLines = lines.filter(l => hasMedicationEvidence(l).hasEvidence);
+    if (candidateLines.length > 0) {
       return candidateLines;
     }
   }
 
-  return blocks.length > 0 ? blocks : [cleaned.trim()];
+  return blocks;
 }
 
 /**
@@ -134,7 +168,6 @@ function parseBlock(
       if (!boundingBox) {
         boundingBox = { ...seg.bbox };
       } else {
-        // Expand bounding box
         const x2 = Math.max(boundingBox.x + boundingBox.width, seg.bbox.x + seg.bbox.width);
         const y2 = Math.max(boundingBox.y + boundingBox.height, seg.bbox.y + seg.bbox.height);
         boundingBox.x = Math.min(boundingBox.x, seg.bbox.x);
@@ -154,7 +187,6 @@ function parseBlock(
   let matchedCatalogEntry: DrugCatalogEntry | null = null;
   for (const entry of COMMON_DRUG_CATALOG) {
     const entryName = entry.name.toLowerCase();
-    // Word boundary match
     const regex = new RegExp(`\\b${entryName}\\b`, 'i');
     if (regex.test(blockText)) {
       matchedCatalogEntry = entry;
@@ -179,15 +211,16 @@ function parseBlock(
       nameStatus = 'uncertain';
       unclearReasons.name = `Handwriting or truncated text matches possible candidate "${partialMatch.name}". Requires prescriber confirmation.`;
     } else {
-      // Extract first substantive word as draft name
+      // Extract tokens, stripping numbers, Rx prefixes, and known stop words
       const cleanTokens = blockText
-        .replace(/^(?:\d+[\.\)]|Rx:?|Item\s*\d+:?)\s*/i, '')
+        .replace(/^(?:\d+[\.\)]|Rx:?|Item\s*\d+:?|#\d+:?)\s*/i, '')
         .split(/\s+/)
-        .filter(t => !/^(?:take|tab|tablet|cap|po|sig|daily|bid|tid)\b/i.test(t));
+        .map(t => t.replace(/[^a-zA-Z0-9-]/g, ''))
+        .filter(t => t.length >= 3 && !NON_MEDICATION_WORDS.has(t.toLowerCase()) && !/^\d+$/.test(t));
 
-      const firstToken = cleanTokens[0] ? cleanTokens[0].replace(/[^a-zA-Z0-9-]/g, '') : '';
+      const firstToken = cleanTokens[0] || '';
 
-      if (firstToken && firstToken.length >= 3) {
+      if (firstToken && firstToken.length >= 3 && !NON_MEDICATION_WORDS.has(firstToken.toLowerCase())) {
         detectedName = firstToken;
         nameStatus = 'uncertain';
         unclearReasons.name = 'Medication name not found in standard formulary. Verify spelling with label or prescriber.';
@@ -216,8 +249,7 @@ function parseBlock(
   let strength: string | null = null;
   let strengthStatus: FieldStatus = 'extracted';
 
-  // Strict regex for numbers followed by medical strength units
-  const strengthMatch = blockText.match(/\b(\d+(?:\.\d+)?)\s*(mg|mcg|mEq|g|ml|units?|%)\b/i);
+  const strengthMatch = blockText.match(/\b(\d+(?:\.\d+)?)\s*(mg(?:\s*\/\s*\d+\s*ml)?|mcg(?:\s*\/\s*hr)?|mEq|g|ml|units?|%)(?:\b|(?=[^a-zA-Z0-9]))/i);
   const unclearStrengthMatch = blockText.match(/\b(\d+[\?\*#_]+|\d+\s*[\?\*#_]+)\s*(?:mg|mcg|mEq|g|ml)/i);
 
   if (unclearStrengthMatch) {
@@ -225,7 +257,8 @@ function parseBlock(
     strengthStatus = 'uncertain';
     unclearReasons.strength = 'Strength numbers contain ambiguous or distorted characters.';
   } else if (strengthMatch) {
-    strength = `${strengthMatch[1]} ${strengthMatch[2].toLowerCase()}`;
+    const rawUnit = strengthMatch[2].toLowerCase();
+    strength = rawUnit === '%' ? `${strengthMatch[1]}%` : `${strengthMatch[1]} ${rawUnit}`.replace(/\s+/g, ' ');
     strengthStatus = 'extracted';
   } else {
     strength = null;
@@ -237,7 +270,6 @@ function parseBlock(
   let doseQuantity: string | null = null;
   let doseQuantityStatus: FieldStatus = 'extracted';
 
-  // Look for instructions like "Take 2 tablets", "1 tab", "take 1 capsule", "2 puffs"
   const quantityMatch = blockText.match(/\b(?:take\s+)?([1-4]|one|two|three|four)\s+(tablet|tab|tablets|tabs|capsule|cap|capsules|caps|puff|puffs|drop|drops|ml)\b/i);
 
   if (quantityMatch) {
@@ -247,7 +279,6 @@ function parseBlock(
     doseQuantity = `${parsedNum} ${quantityMatch[2].toLowerCase()}`;
     doseQuantityStatus = 'extracted';
   } else {
-    // Default to null rather than assuming 1 tablet
     doseQuantity = null;
     doseQuantityStatus = 'uncertain';
     unclearReasons.doseQuantity = 'Dose quantity not explicitly specified. Confirm number of units per dose.';
@@ -257,20 +288,20 @@ function parseBlock(
   let dosageForm: string | null = null;
   let dosageFormStatus: FieldStatus = 'extracted';
 
-  if (/\b(?:tablet|tablets|tab|tabs)\b/i.test(blockText)) {
+  if (/\b(?:drops?|ophthalmic|otic)\b/i.test(blockText)) {
+    dosageForm = 'Drops';
+  } else if (/\b(?:inhaler|puffs?|hfa)\b/i.test(blockText)) {
+    dosageForm = 'Inhaler';
+  } else if (/\b(?:tablet|tablets|tab|tabs)\b/i.test(blockText)) {
     dosageForm = 'Tablet';
   } else if (/\b(?:capsule|capsules|cap|caps)\b/i.test(blockText)) {
     dosageForm = 'Capsule';
   } else if (/\b(?:liquid|syrup|solution|suspension)\b/i.test(blockText)) {
     dosageForm = 'Liquid';
-  } else if (/\b(?:inhaler|puffs?)\b/i.test(blockText)) {
-    dosageForm = 'Inhaler';
-  } else if (/\b(?:drops?|ophthalmic|otic)\b/i.test(blockText)) {
-    dosageForm = 'Drops';
-  } else if (/\b(?:cream|ointment|gel)\b/i.test(blockText)) {
+  } else if (/\b(?:cream|ointment|gel|patch)\b/i.test(blockText)) {
     dosageForm = 'Topical';
   } else {
-    dosageForm = 'Tablet'; // standard default but flagged
+    dosageForm = 'Tablet';
     dosageFormStatus = 'uncertain';
     unclearReasons.dosageForm = 'Dosage form not clearly stated.';
   }
@@ -283,9 +314,8 @@ function parseBlock(
 
   if (/\b(?:twice\s+daily|bid|q12h|every\s+12\s+hours?)\b/i.test(blockText)) {
     frequency = 'Twice daily';
-    // Do NOT silently invent 8 AM and 8 PM reminders without confirmation!
     scheduleStatus = 'uncertain';
-    timeSlots.push('morning', 'evening'); // tentative proposal, marked uncertain
+    timeSlots.push('morning', 'evening');
     unclearReasons.schedule = 'Prescription specifies "twice daily" without exact schedule hours. Please verify timing.';
   } else if (/\b(?:three\s+times\s+daily|tid|q8h)\b/i.test(blockText)) {
     frequency = 'Three times daily';
@@ -297,20 +327,28 @@ function parseBlock(
     scheduleStatus = 'uncertain';
     timeSlots.push('morning', 'midday', 'evening', 'bedtime');
     unclearReasons.schedule = 'Prescription specifies "four times daily". Confirm exact slots.';
-  } else if (/\b(?:once\s+daily|daily|every\s+day|qday|qd)\b/i.test(blockText)) {
+  } else if (/\b(?:once\s+daily|daily|every\s+day|qday|qd|every\s+night|nightly|every\s+morning|qam|qhs|at\s+bedtime|in\s+the\s+evening)\b/i.test(blockText)) {
     frequency = 'Once daily';
-    if (/\b(?:morning|qam|breakfast)\b/i.test(blockText)) {
+    if (/\b(?:morning|qam|breakfast|every\s+morning)\b/i.test(blockText)) {
       timeSlots.push('morning');
-    } else if (/\b(?:bedtime|qhs|evening|night)\b/i.test(blockText)) {
+    } else if (/\b(?:midday|noon|lunch)\b/i.test(blockText)) {
+      timeSlots.push('midday');
+    } else if (/\b(?:evening|dinner)\b/i.test(blockText)) {
+      timeSlots.push('evening');
+    } else if (/\b(?:bedtime|qhs|night|nightly|every\s+night|at\s+bedtime)\b/i.test(blockText)) {
       timeSlots.push('bedtime');
     } else {
-      // Missing clock time: requires user confirmation
       scheduleStatus = 'uncertain';
       unclearReasons.schedule = 'Prescription specifies "once daily" without exact time slot. Confirm morning, evening, or bedtime.';
     }
   } else if (/\b(?:as\s+needed|prn)\b/i.test(blockText)) {
     frequency = 'As needed (PRN)';
     scheduleStatus = 'extracted';
+    if (/\b(?:bedtime|qhs|night)\b/i.test(blockText)) {
+      timeSlots.push('bedtime');
+    } else if (/\b(?:morning|qam)\b/i.test(blockText)) {
+      timeSlots.push('morning');
+    }
   } else {
     frequency = null;
     frequencyStatus = 'uncertain';
@@ -343,9 +381,15 @@ function parseBlock(
     instructionTokens.push('Take with a full glass of water');
   }
 
-  instructions = instructionTokens.length > 0 ? instructionTokens.join('. ') : blockText.slice(0, 120);
+  // Extract explicit Sig lines if present
+  const sigMatch = blockText.match(/(?:sig\s*:|take\s+)([^.\n\r]+)/i);
+  if (sigMatch && instructionTokens.length === 0) {
+    instructionTokens.push(sigMatch[0].trim());
+  }
 
-  // 8. Prescriber details if explicitly present
+  instructions = instructionTokens.length > 0 ? instructionTokens.join('. ') : '';
+
+  // 8. Prescriber details if explicitly present in this block
   let prescribedBy: string | null = null;
   const prescriberMatch = blockText.match(/\b(?:dr\.?|doctor|physician|prescriber)\s+([a-zA-Z\s\.\,]{3,30})/i);
   if (prescriberMatch) {
@@ -377,31 +421,68 @@ function parseBlock(
 }
 
 /**
- * Main parser entry point: parses raw text and OCR segments into structured drafts.
+ * Main layout-aware prescription parser entry point with comprehensive diagnostics.
  */
-export function parsePrescriptionText(
+export function parsePrescriptionTextWithDiagnostics(
   rawText: string,
   segments: TextRecognitionSegment[] = []
-): PrescriptionMedicationDraft[] {
-  const blocks = segmentPrescriptionBlocks(rawText);
+): {
+  drafts: PrescriptionMedicationDraft[];
+  diagnostics: RecognitionDiagnostics;
+} {
+  const regions = segmentDocumentIntoRegions(rawText, segments);
+  const blocks = segmentPrescriptionBlocks(rawText, segments);
   const drafts: PrescriptionMedicationDraft[] = [];
-  let detectedPrescriber: string | null = null;
+  const candidateEvaluations: CandidateEvaluation[] = [];
+
+  // Identify any prescriber info at document level
+  let documentPrescriber: string | null = null;
+  for (const reg of regions) {
+    if (reg.zone === 'prescriber_footer') {
+      const match = reg.text.match(/\b(?:dr\.?|doctor|physician|prescriber)\s+([a-zA-Z\s\.\,]{3,30})/i);
+      if (match) {
+        documentPrescriber = `Dr. ${match[1].trim()}`;
+      }
+    }
+  }
 
   for (const block of blocks) {
+    const medEvidence = hasMedicationEvidence(block);
     const parsed = parseBlock(block, segments);
 
-    // If block has prescriber info, save it
-    if (parsed.prescribedBy) {
-      detectedPrescriber = parsed.prescribedBy;
-    }
+    // CRITICAL FILTER: Positive Evidence Requirement
+    // A block must have at least one recognized medication indicator:
+    // 1. Matched catalog entry, OR
+    // 2. Strength units + form, OR
+    // 3. Clinical strength, OR
+    // 4. Legitimate unreadable drug candidate accompanied by dosage or instructions
+    const hasCatalogName = parsed.name && COMMON_DRUG_CATALOG.some(d => d.name.toLowerCase() === parsed.name!.toLowerCase());
+    const hasClinicalStrength = parsed.strength !== null;
+    const isUncertainWithEvidence = parsed.name && parsed.nameStatus === 'uncertain' && (medEvidence.hasEvidence || hasClinicalStrength);
+    const isUnreadableMedItem = parsed.nameStatus === 'unreadable' && (hasClinicalStrength || medEvidence.reasons.length >= 1);
 
-    // Filter out purely header/footer blocks that have no drug name, no strength, and are just prescriber/clinic info
-    const isPureFooter = !parsed.name && !parsed.strength && parsed.nameStatus === 'unreadable' &&
-      /^(?:dr\.?|doctor|physician|prescriber|clinic|npi|dea|rx|signature)/i.test(block.trim());
+    const isCredibleMedication = hasCatalogName || hasClinicalStrength || isUncertainWithEvidence || isUnreadableMedItem;
 
-    if (isPureFooter) {
+    if (!isCredibleMedication) {
+      // Reject non-medication text (such as headers, form titles, demographic lines)
+      candidateEvaluations.push({
+        rawText: block,
+        accepted: false,
+        rejectionReason: 'Rejected non-medication text: Block lacks pharmaceutical name, clinical strength, or administration directions.',
+        evidenceFound: medEvidence.reasons,
+        zone: 'unknown'
+      });
       continue;
     }
+
+    // Accept candidate
+    candidateEvaluations.push({
+      rawText: block,
+      accepted: true,
+      medicationName: parsed.name,
+      evidenceFound: medEvidence.reasons,
+      zone: 'prescription_body'
+    });
 
     const fieldStatuses: Record<string, FieldStatus> = {
       name: parsed.nameStatus,
@@ -426,7 +507,7 @@ export function parsePrescriptionText(
       duration: parsed.duration,
       instructions: parsed.instructions,
       rxCui: null,
-      prescribedBy: parsed.prescribedBy || detectedPrescriber,
+      prescribedBy: parsed.prescribedBy || documentPrescriber,
       fieldStatuses,
       verificationStatus: 'pending',
       boundingBox: parsed.boundingBox,
@@ -435,16 +516,38 @@ export function parsePrescriptionText(
     });
   }
 
-  // If a document-level prescriber was found, backfill any drafts without prescriber
-  if (detectedPrescriber) {
+  // Backfill document prescriber if individual draft didn't extract one
+  if (documentPrescriber) {
     for (const d of drafts) {
       if (!d.prescribedBy) {
-        d.prescribedBy = detectedPrescriber;
+        d.prescribedBy = documentPrescriber;
       }
     }
   }
 
-  return drafts;
+  const diagnostics: RecognitionDiagnostics = {
+    totalRegions: regions.length,
+    classifiedZones: regions.map(r => ({
+      zone: r.zone,
+      snippet: r.text.slice(0, 80),
+      bbox: r.bbox,
+      reason: r.reason
+    })),
+    candidateEvaluations,
+    processingPasses: ['Layout Region Segmentation', 'Administrative Zone Filtering', 'Clinical Evidence Extraction']
+  };
+
+  return { drafts, diagnostics };
+}
+
+/**
+ * Standard parser entry point (returns drafts array).
+ */
+export function parsePrescriptionText(
+  rawText: string,
+  segments: TextRecognitionSegment[] = []
+): PrescriptionMedicationDraft[] {
+  return parsePrescriptionTextWithDiagnostics(rawText, segments).drafts;
 }
 
 /**

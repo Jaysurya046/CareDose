@@ -8,7 +8,9 @@ export interface PreprocessOptions {
   rotateDegrees?: number; // 0, 90, 180, 270
   grayscale?: boolean;
   enhanceContrast?: boolean;
+  adaptiveBinarization?: boolean;
   maxDimension?: number;
+  cropRegion?: { x: number; y: number; width: number; height: number };
 }
 
 /**
@@ -42,20 +44,28 @@ export async function preprocessImage(
     rotateDegrees = 0,
     grayscale = true,
     enhanceContrast = true,
-    maxDimension = 2048
+    adaptiveBinarization = false,
+    maxDimension = 2048,
+    cropRegion
   } = options;
 
   let srcWidth = imageSource instanceof HTMLImageElement ? imageSource.naturalWidth : imageSource.width;
   let srcHeight = imageSource instanceof HTMLImageElement ? imageSource.naturalHeight : imageSource.height;
 
+  // Handle cropping if requested
+  const sx = cropRegion ? Math.max(0, cropRegion.x) : 0;
+  const sy = cropRegion ? Math.max(0, cropRegion.y) : 0;
+  const sw = cropRegion ? Math.min(srcWidth - sx, cropRegion.width) : srcWidth;
+  const sh = cropRegion ? Math.min(srcHeight - sy, cropRegion.height) : srcHeight;
+
   // Compute scaled dimensions respecting maxDimension
   let scale = 1;
-  const largest = Math.max(srcWidth, srcHeight);
+  const largest = Math.max(sw, sh);
   if (largest > maxDimension) {
     scale = maxDimension / largest;
   }
-  const scaledWidth = Math.round(srcWidth * scale);
-  const scaledHeight = Math.round(srcHeight * scale);
+  const scaledWidth = Math.round(sw * scale);
+  const scaledHeight = Math.round(sh * scale);
 
   // Setup canvas with rotation consideration
   const canvas = document.createElement('canvas');
@@ -72,12 +82,13 @@ export async function preprocessImage(
   ctx.fillStyle = '#FFFFFF';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Apply rotation
+  // Apply rotation and draw
   ctx.save();
   ctx.translate(canvas.width / 2, canvas.height / 2);
   ctx.rotate((rotateDegrees * Math.PI) / 180);
   ctx.drawImage(
     imageSource,
+    sx, sy, sw, sh,
     -scaledWidth / 2,
     -scaledHeight / 2,
     scaledWidth,
@@ -86,42 +97,77 @@ export async function preprocessImage(
   ctx.restore();
 
   // Pixel-level adjustments if grayscale or contrast enhancement enabled
-  if (grayscale || enhanceContrast) {
+  if (grayscale || enhanceContrast || adaptiveBinarization) {
     const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const d = imgData.data;
+    const w = canvas.width;
+    const h = canvas.height;
 
-    // First pass: Compute luminance and min/max for dynamic contrast stretching
+    // Convert to grayscale luminance array
+    const lums = new Uint8Array(w * h);
     let minLum = 255;
     let maxLum = 0;
 
-    for (let i = 0; i < d.length; i += 4) {
-      // Human perceptual luminance formula
-      const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    for (let i = 0, j = 0; i < d.length; i += 4, j++) {
+      const lum = Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]);
+      lums[j] = lum;
       if (lum < minLum) minLum = lum;
       if (lum > maxLum) maxLum = lum;
     }
 
     const range = Math.max(maxLum - minLum, 1);
 
-    // Second pass: apply linear contrast stretch and convert to high-clarity grayscale
-    for (let i = 0; i < d.length; i += 4) {
-      const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-      let adjusted = lum;
+    if (adaptiveBinarization) {
+      // Local window thresholding for extracting faint ink from form background
+      const windowSize = 16;
+      const halfWin = Math.floor(windowSize / 2);
 
-      if (enhanceContrast) {
-        // Stretch contrast to use full 0-255 spectrum
-        adjusted = ((lum - minLum) / range) * 255;
-        // Subtle S-curve to darken ink while keeping paper background clean
-        adjusted = adjusted < 128 
-          ? Math.max(0, adjusted * 0.9) 
-          : Math.min(255, adjusted * 1.05);
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const idx = y * w + x;
+          const pixelLum = lums[idx];
+
+          // Compute local mean in sliding window
+          let sum = 0;
+          let count = 0;
+          for (let dy = -halfWin; dy <= halfWin; dy += 4) {
+            const ny = y + dy;
+            if (ny < 0 || ny >= h) continue;
+            for (let dx = -halfWin; dx <= halfWin; dx += 4) {
+              const nx = x + dx;
+              if (nx < 0 || nx >= w) continue;
+              sum += lums[ny * w + nx];
+              count++;
+            }
+          }
+          const localMean = count > 0 ? (sum / count) : 128;
+          // If pixel is sufficiently darker than local paper background, emphasize ink (0), else clean white (255)
+          const val = pixelLum < (localMean * 0.88) ? Math.max(0, pixelLum * 0.7) : 255;
+
+          const pIdx = idx * 4;
+          d[pIdx] = val;
+          d[pIdx + 1] = val;
+          d[pIdx + 2] = val;
+        }
       }
+    } else {
+      // Standard linear contrast stretch
+      for (let i = 0; i < d.length; i += 4) {
+        const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+        let adjusted = lum;
 
-      const finalVal = Math.round(adjusted);
-      d[i] = finalVal;     // R
-      d[i + 1] = finalVal; // G
-      d[i + 2] = finalVal; // B
-      // d[i + 3] (Alpha) unchanged
+        if (enhanceContrast) {
+          adjusted = ((lum - minLum) / range) * 255;
+          adjusted = adjusted < 128 
+            ? Math.max(0, adjusted * 0.9) 
+            : Math.min(255, adjusted * 1.05);
+        }
+
+        const finalVal = Math.round(adjusted);
+        d[i] = finalVal;
+        d[i + 1] = finalVal;
+        d[i + 2] = finalVal;
+      }
     }
 
     ctx.putImageData(imgData, 0, 0);

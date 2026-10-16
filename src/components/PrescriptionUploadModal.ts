@@ -9,7 +9,7 @@ import { loadImageFromFile, preprocessImage } from '../services/imagePreprocesso
 import { processPdfDocument } from '../services/pdfExtractor';
 import { recognizePrintedText, cancelOcr } from '../services/ocrService';
 import { analyzeHandwritingEvidence, reconcileRecognitionEvidence } from '../services/handwritingService';
-import { parsePrescriptionText } from '../engine/prescriptionParser';
+import { parsePrescriptionTextWithDiagnostics } from '../engine/prescriptionParser';
 import { openPrescriptionReviewModal } from './PrescriptionReviewModal';
 import { openMedicationModal } from './MedicationModal';
 
@@ -447,7 +447,7 @@ export function openPrescriptionUploadModal(onSuccess?: () => void): void {
       const combinedText = pagesData.map(p => p.rawText).join('\n\n');
       const allSegments = pagesData.flatMap(p => p.segments);
 
-      const drafts = parsePrescriptionText(combinedText, allSegments);
+      const { drafts, diagnostics } = parsePrescriptionTextWithDiagnostics(combinedText, allSegments);
 
       progressFill.style.width = '100%';
       isScanning = false;
@@ -461,6 +461,7 @@ export function openPrescriptionUploadModal(onSuccess?: () => void): void {
         currentPage: 1,
         pages: pagesData,
         drafts,
+        diagnostics,
         createdAt: new Date().toISOString()
       };
 

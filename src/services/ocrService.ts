@@ -62,14 +62,22 @@ export async function cancelOcr(): Promise<void> {
   }
 }
 
+export interface OcrOptions {
+  psm?: number;
+  onProgress?: (info: OcrProgressInfo) => void;
+}
+
 /**
  * Runs local OCR on an image source (data URL, Blob, or Canvas).
  */
 export async function recognizePrintedText(
   imageSource: string | Blob | HTMLCanvasElement,
-  onProgress?: (info: OcrProgressInfo) => void
+  progressOrOptions?: ((info: OcrProgressInfo) => void) | OcrOptions
 ): Promise<TextRecognitionResult> {
   isCancelled = false;
+
+  const onProgress = typeof progressOrOptions === 'function' ? progressOrOptions : progressOrOptions?.onProgress;
+  const psm = typeof progressOrOptions === 'object' ? progressOrOptions.psm : undefined;
 
   const worker = await getOcrWorker(onProgress);
 
@@ -77,14 +85,42 @@ export async function recognizePrintedText(
     throw new Error('OCR recognition was cancelled by user');
   }
 
-  const result = await worker.recognize(imageSource);
+  // Set PSM if requested (e.g. 3 = Fully automatic, 6 = Uniform block, 11 = Sparse text)
+  if (typeof psm === 'number') {
+    try {
+      await worker.setParameters({ tessedit_pageseg_mode: String(psm) as any });
+    } catch {
+      // Ignore if setParameters fails
+    }
+  }
+
+  let result = await worker.recognize(imageSource);
 
   if (isCancelled) {
     throw new Error('OCR recognition was cancelled by user');
   }
 
-  const rawText = result.data.text || '';
-  const overallConfidence = typeof result.data.confidence === 'number' ? result.data.confidence : undefined;
+  let rawText = result.data.text || '';
+  let overallConfidence = typeof result.data.confidence === 'number' ? result.data.confidence : undefined;
+
+  // Fallback multi-pass: If PSM was default and recognized text is very sparse (< 10 chars),
+  // attempt a second pass with PSM 11 (Sparse text) which often catches isolated handwriting / form lines
+  if (!psm && rawText.trim().length < 10) {
+    try {
+      if (onProgress) onProgress({ status: 'Running secondary sparse-text pass...', progress: 0.85 });
+      await worker.setParameters({ tessedit_pageseg_mode: '11' as any });
+      const pass2 = await worker.recognize(imageSource);
+      if (pass2.data.text && pass2.data.text.trim().length > rawText.trim().length) {
+        result = pass2;
+        rawText = pass2.data.text;
+        overallConfidence = typeof pass2.data.confidence === 'number' ? pass2.data.confidence : overallConfidence;
+      }
+      // Reset back to default PSM 3
+      await worker.setParameters({ tessedit_pageseg_mode: '3' as any });
+    } catch {
+      // Ignore fallback error
+    }
+  }
 
   // Extract structured word and line segments with bounding boxes
   const segments: TextRecognitionSegment[] = [];

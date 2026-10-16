@@ -529,3 +529,144 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Empty State: No Medications Could Be Reliably Identified */
+.rx-empty-state {
+  padding: 2.5rem 1.5rem;
+  text-align: center;
+  background: var(--bg-surface-alt);
+  border: 1.5px dashed var(--border-main);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  margin: auto 0;
+}
+
+.rx-empty-state-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #fef3c7;
+  color: #b45309;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rx-empty-state h3 {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0;
+}
+
+.rx-empty-state p {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  max-width: 440px;
+  margin: 0;
+}
+
+.rx-empty-state-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 0.5rem;
+}
+
+/* Candidate Delete Button */
+.btn-delete-candidate {
+  color: #ef4444;
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
+.btn-delete-candidate:hover {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+/* Diagnostics Modal */
+.rx-diagnostics-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(4px);
+  z-index: 1050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+}
+
+.rx-diagnostics-card {
+  background: var(--bg-surface);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 900px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border-main);
+  overflow: hidden;
+}
+
+.rx-diagnostics-header {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-surface-alt);
+}
+
+.rx-diagnostics-body {
+  padding: 1.25rem 1.5rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.rx-diag-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.rx-diag-table th,
+.rx-diag-table td {
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--border-light);
+  text-align: left;
+  vertical-align: top;
+}
+
+.rx-diag-table th {
+  background: var(--bg-surface-alt);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.rx-diag-badge {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.rx-diag-badge.badge-header { background: #e0e7ff; color: #3730a3; }
+.rx-diag-badge.badge-demographics { background: #fef3c7; color: #92400e; }
+.rx-diag-badge.badge-body { background: #d1fae5; color: #065f46; }
+.rx-diag-badge.badge-footer { background: #ede9fe; color: #5b21b6; }
+.rx-diag-badge.badge-boilerplate { background: #f1f5f9; color: #475569; }
+.rx-diag-badge.badge-unknown { background: #f3f4f6; color: #6b7280; }
+.rx-diag-badge.badge-accepted { background: #d1fae5; color: #065f46; }
+.rx-diag-badge.badge-rejected { background: #fee2e2; color: #991b1b; }

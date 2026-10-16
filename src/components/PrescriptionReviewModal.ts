@@ -13,11 +13,210 @@ import type {
   PrescriptionScanSession,
   PrescriptionMedicationDraft,
   TimeSlot,
-  FieldStatus
+  FieldStatus,
+  RecognitionDiagnostics
 } from '../types';
 import { generateLocalId } from '../utils/sanitize';
 import { findCatalogSuggestions, validateDraftForImport } from '../engine/prescriptionParser';
 import { openPrescriptionImportSummary } from './PrescriptionImportSummary';
+import { openPrescriptionUploadModal } from './PrescriptionUploadModal';
+import { openMedicationModal } from './MedicationModal';
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function openDiagnosticsModal(diagnostics?: RecognitionDiagnostics): void {
+  const existing = document.getElementById('rx-diag-modal');
+  if (existing) existing.remove();
+
+  const backdrop = document.createElement('div');
+  backdrop.id = 'rx-diag-modal';
+  backdrop.className = 'rx-diagnostics-backdrop';
+  backdrop.setAttribute('role', 'dialog');
+  backdrop.setAttribute('aria-modal', 'true');
+  backdrop.setAttribute('aria-labelledby', 'rx-diag-title');
+
+  if (!diagnostics) {
+    backdrop.innerHTML = `
+      <div class="rx-diagnostics-card" style="max-width: 500px;">
+        <div class="rx-diagnostics-header">
+          <h3 id="rx-diag-title" style="margin: 0; font-size: 1.125rem;">Prescription Layout &amp; Diagnostics</h3>
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-close-diag">Close</button>
+        </div>
+        <div class="rx-diagnostics-body">
+          <p style="color: var(--text-muted); font-size: 0.875rem; margin: 0;">No diagnostic telemetry recorded for this session.</p>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(backdrop);
+    backdrop.querySelector('#btn-close-diag')?.addEventListener('click', () => backdrop.remove());
+    return;
+  }
+
+  backdrop.innerHTML = `
+    <div class="rx-diagnostics-card">
+      <div class="rx-diagnostics-header">
+        <div>
+          <h3 id="rx-diag-title" style="margin: 0; font-size: 1.125rem; font-weight: 700;">Developer Diagnostics: Document Layout &amp; Candidate Detection</h3>
+          <p style="margin: 0.25rem 0 0; font-size: 0.75rem; color: var(--text-muted);">
+            Inspected ${diagnostics.totalRegions} document regions across ${diagnostics.classifiedZones.length} classified layout zones.
+          </p>
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm" id="btn-close-diag">Close</button>
+      </div>
+
+      <div class="rx-diagnostics-body">
+        <div class="rx-notice-banner notice-info" style="font-size: 0.8125rem;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0;" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
+          <div>
+            <strong>100% On-Device Privacy:</strong> All OCR layout analysis, candidate evaluations, and diagnostics run purely inside browser memory. No patient information or scanned documents are logged or sent to any external service.
+          </div>
+        </div>
+
+        <!-- Section 1: Candidate Evaluations -->
+        <div>
+          <h4 style="font-size: 0.9375rem; font-weight: 700; margin: 0 0 0.5rem; display: flex; align-items: center; justify-content: space-between;">
+            <span>Candidate Evaluations (${diagnostics.candidateEvaluations.length})</span>
+            <span style="font-size: 0.75rem; font-weight: 400; color: var(--text-muted);">
+              ${diagnostics.candidateEvaluations.filter(e => e.accepted).length} accepted • ${diagnostics.candidateEvaluations.filter(e => !e.accepted).length} rejected
+            </span>
+          </h4>
+          <div style="overflow-x: auto;">
+            <table class="rx-diag-table">
+              <thead>
+                <tr>
+                  <th style="width: 110px;">Status</th>
+                  <th style="width: 30%;">Source Snippet</th>
+                  <th>Acceptance / Rejection Reasons</th>
+                  <th style="width: 120px;">Zone</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${diagnostics.candidateEvaluations.length === 0 ? `
+                  <tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 1rem;">No candidate blocks evaluated.</td></tr>
+                ` : diagnostics.candidateEvaluations.map(ev => `
+                  <tr>
+                    <td>
+                      <span class="rx-diag-badge ${ev.accepted ? 'badge-accepted' : 'badge-rejected'}">
+                        ${ev.accepted ? '✓ Accepted' : '✗ Rejected'}
+                      </span>
+                    </td>
+                    <td><code style="font-size: 0.75rem; font-family: monospace;">${escapeHtml(ev.rawText.slice(0, 100) || '(empty)')}</code></td>
+                    <td>
+                      <ul style="margin: 0; padding-left: 1.25rem; font-size: 0.75rem;">
+                        ${ev.accepted ? `
+                          <li>Positive evidence: ${ev.evidenceFound.join(', ') || 'Medication signature found'}</li>
+                          ${ev.medicationName ? `<li>Detected drug name: <strong>${escapeHtml(ev.medicationName)}</strong></li>` : ''}
+                        ` : `
+                          <li>${escapeHtml(ev.rejectionReason || 'Rejected non-medication content')}</li>
+                        `}
+                      </ul>
+                    </td>
+                    <td style="font-size: 0.75rem;">
+                      <span class="rx-diag-badge badge-boilerplate">${ev.zone}</span>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Section 2: Document Layout Classification -->
+        <div>
+          <h4 style="font-size: 0.9375rem; font-weight: 700; margin: 0 0 0.5rem;">
+            Document Layout Classification (${diagnostics.classifiedZones.length} Classified Zones)
+          </h4>
+          <div style="overflow-x: auto;">
+            <table class="rx-diag-table">
+              <thead>
+                <tr>
+                  <th style="width: 170px;">Zone Type</th>
+                  <th style="width: 130px;">Coordinates</th>
+                  <th>Zone Snippet &amp; Classification Rule</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${diagnostics.classifiedZones.map(r => {
+                  const badgeClass = 
+                    r.zone === 'document_header' ? 'badge-header' :
+                    r.zone === 'patient_demographics' ? 'badge-demographics' :
+                    r.zone === 'prescription_body' ? 'badge-body' :
+                    r.zone === 'prescriber_footer' ? 'badge-footer' :
+                    r.zone === 'administrative_boilerplate' ? 'badge-boilerplate' : 'badge-unknown';
+                  return `
+                    <tr>
+                      <td><span class="rx-diag-badge ${badgeClass}">${r.zone}</span></td>
+                      <td style="font-family: monospace; font-size: 0.75rem;">
+                        ${r.bbox ? `[${r.bbox.x}, ${r.bbox.y}, ${r.bbox.width}, ${r.bbox.height}]` : 'N/A'}
+                      </td>
+                      <td>
+                        <div style="font-size: 0.75rem; font-weight: 600;">"${escapeHtml(r.snippet)}"</div>
+                        <div style="font-size: 0.71875rem; color: var(--text-muted); margin-top: 2px;">Rule: ${escapeHtml(r.reason)}</div>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Section 3: Processing Passes & OCR Telemetry -->
+        <div>
+          <h4 style="font-size: 0.9375rem; font-weight: 700; margin: 0 0 0.5rem;">Pipeline Stages &amp; OCR Telemetry</h4>
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem;">
+            ${diagnostics.processingPasses.map(p => `
+              <span class="badge" style="background: var(--bg-surface-alt); border: 1px solid var(--border-light); font-size: 0.75rem;">
+                ✓ ${escapeHtml(p)}
+              </span>
+            `).join('')}
+          </div>
+          ${(diagnostics.ocrPasses && diagnostics.ocrPasses.length > 0) ? `
+            <div style="overflow-x: auto;">
+              <table class="rx-diag-table">
+                <thead>
+                  <tr>
+                    <th>Pass #</th>
+                    <th>Segmentation Mode (PSM)</th>
+                    <th>Characters Extracted</th>
+                    <th>Mean OCR Confidence</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${diagnostics.ocrPasses.map(p => `
+                    <tr>
+                      <td>Pass ${p.pass}</td>
+                      <td>PSM ${p.psm}</td>
+                      <td>${p.textLength} chars</td>
+                      <td>${Math.round(p.meanConfidence)}%</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(backdrop);
+  backdrop.querySelector('#btn-close-diag')?.addEventListener('click', () => backdrop.remove());
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop) backdrop.remove();
+  });
+}
 
 export function openPrescriptionReviewModal(
   session: PrescriptionScanSession,
@@ -47,12 +246,30 @@ export function openPrescriptionReviewModal(
           <h2 id="rx-review-title">Review Extracted Medications</h2>
           <p>Compare extracted clinical fields against your prescription. Confirm or clarify any ambiguous handwriting.</p>
         </div>
-        <button type="button" class="rx-modal-close-btn" id="btn-close-review" aria-label="Close prescription review">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
+        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-toggle-diagnostics" title="Inspect OCR layout regions and candidate acceptance/rejection diagnostics">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+            </svg>
+            <span>Diagnostics</span>
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-retake-header" title="Retake or choose another prescription image">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+            </svg>
+            <span>Retake Scan</span>
+          </button>
+          <button type="button" class="rx-modal-close-btn" id="btn-close-review" aria-label="Close prescription review">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
       </div>
 
       <!-- Mobile Tab Switcher -->
@@ -170,6 +387,17 @@ export function openPrescriptionReviewModal(
     }
   });
 
+  modalBackdrop.querySelector('#btn-retake-header')?.addEventListener('click', () => {
+    if (confirm('Retake or choose another prescription image? Any unimported review changes will be discarded.')) {
+      cleanup();
+      openPrescriptionUploadModal(onComplete);
+    }
+  });
+
+  modalBackdrop.querySelector('#btn-toggle-diagnostics')?.addEventListener('click', () => {
+    openDiagnosticsModal(session.diagnostics);
+  });
+
   // Mobile Tab switching
   const updateMobileTabs = () => {
     if (activeMobileTab === 'doc') {
@@ -260,13 +488,41 @@ export function openPrescriptionReviewModal(
   const renderCandidates = () => {
     if (session.drafts.length === 0) {
       candidatesMount.innerHTML = `
-        <div style="padding: 2rem; text-align: center; color: var(--text-muted);">
-          <p>No medication candidates found.</p>
-          <button type="button" class="btn btn-secondary btn-sm" id="btn-empty-add">Add Medication Manually</button>
+        <div class="rx-empty-state">
+          <div class="rx-empty-state-icon" aria-hidden="true">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+          </div>
+          <h3>No Medications Could Be Reliably Identified</h3>
+          <p>We couldn't read the medication information clearly. Please try a clearer image or enter the medication details after checking with your pharmacist or prescribing doctor.</p>
+          <div class="rx-empty-state-actions">
+            <button type="button" class="btn btn-primary" id="btn-empty-retake">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+              </svg>
+              <span>Retake / Replace Image</span>
+            </button>
+            <button type="button" class="btn btn-secondary" id="btn-empty-add-manual">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              <span>Enter Medication Manually</span>
+            </button>
+          </div>
         </div>
       `;
-      candidatesMount.querySelector('#btn-empty-add')?.addEventListener('click', () => {
-        addManualCandidate();
+      candidatesMount.querySelector('#btn-empty-retake')?.addEventListener('click', () => {
+        cleanup();
+        openPrescriptionUploadModal(onComplete);
+      });
+      candidatesMount.querySelector('#btn-empty-add-manual')?.addEventListener('click', () => {
+        cleanup();
+        openMedicationModal(undefined, onComplete);
       });
       updateFooter();
       return;
@@ -297,6 +553,13 @@ export function openPrescriptionReviewModal(
               )}
               <button type="button" class="btn btn-secondary btn-sm btn-toggle-exclude" data-id="${draft.id}" title="${isExcluded ? 'Include candidate' : 'Exclude from import'}">
                 ${isExcluded ? 'Include' : 'Exclude'}
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm btn-delete-candidate" data-id="${draft.id}" title="Remove this candidate" aria-label="Remove candidate #${idx + 1}">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+                <span>Delete</span>
               </button>
             </div>
           </div>
@@ -539,6 +802,22 @@ export function openPrescriptionReviewModal(
         if (draft) {
           draft.isExcluded = !draft.isExcluded;
           renderCandidates();
+        }
+      });
+    });
+
+    // Delete candidate
+    candidatesMount.querySelectorAll('.btn-delete-candidate').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = (e.currentTarget as HTMLElement).dataset.id!;
+        if (confirm('Remove this medication candidate?')) {
+          session.drafts = session.drafts.filter(d => d.id !== id);
+          if (selectedDraftId === id) {
+            selectedDraftId = session.drafts[0]?.id || null;
+          }
+          renderCandidates();
+          updateHighlightBox();
         }
       });
     });

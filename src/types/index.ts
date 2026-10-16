@@ -96,6 +96,51 @@ export interface PrescriptionMedicationDraft {
   isExcluded?: boolean;
 }
 
+export type DocumentZoneType =
+  | 'document_header'
+  | 'patient_demographics'
+  | 'prescription_body'
+  | 'prescriber_footer'
+  | 'administrative_boilerplate'
+  | 'unknown';
+
+export interface DocumentRegion {
+  id: string;
+  zone: DocumentZoneType;
+  text: string;
+  confidence?: number;
+  bbox?: BoundingBox;
+  reason: string;
+  isPrescriptionCandidate: boolean;
+}
+
+export interface CandidateEvaluation {
+  rawText: string;
+  accepted: boolean;
+  medicationName?: string | null;
+  rejectionReason?: string;
+  evidenceFound: string[];
+  zone: DocumentZoneType;
+}
+
+export interface RecognitionDiagnostics {
+  totalRegions: number;
+  classifiedZones: Array<{
+    zone: DocumentZoneType;
+    snippet: string;
+    bbox?: BoundingBox;
+    reason: string;
+  }>;
+  candidateEvaluations: CandidateEvaluation[];
+  processingPasses: string[];
+  ocrPasses?: Array<{
+    pass: number;
+    psm: number;
+    textLength: number;
+    meanConfidence: number;
+  }>;
+}
+
 export interface PrescriptionScanSession {
   id: string;
   fileName: string;
@@ -110,6 +155,7 @@ export interface PrescriptionScanSession {
     segments: TextRecognitionSegment[];
   }>;
   drafts: PrescriptionMedicationDraft[];
+  diagnostics?: RecognitionDiagnostics;
   createdAt: string;
 }
 
