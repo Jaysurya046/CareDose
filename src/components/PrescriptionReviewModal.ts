@@ -1039,9 +1039,7 @@ export function openPrescriptionReviewModal(
       const isSelected = draft.id === selectedDraftId;
       const isExcluded = !!draft.isExcluded;
 
-      const hasUnresolvedIssues = Object.entries(draft.fieldStatuses).some(([_, s]) => 
-        (s === 'uncertain' || s === 'unreadable') && draft.verificationStatus === 'pending'
-      );
+      const validation = validateDraftForImport(draft);
 
       return `
         <article class="rx-candidate-card ${isSelected ? 'is-selected' : ''} ${isExcluded ? 'is-excluded' : ''}" data-id="${draft.id}">
@@ -1077,12 +1075,12 @@ export function openPrescriptionReviewModal(
             </div>
           ` : `
             <div class="rx-card-body">
-              ${hasUnresolvedIssues ? `
+              ${!validation.isSafeToImport ? `
                 <div class="rx-notice-banner notice-caution" style="padding: 0.625rem 0.75rem; font-size: 0.8125rem;">
                   <div>
-                    <strong>Unresolved Clinical Information:</strong>
-                    ${Object.entries(draft.unclearReasons || {}).map(([field, reason]) => `
-                      <div>• <strong>${field}</strong>: ${reason}</div>
+                    <strong>Verification Required Before Import:</strong>
+                    ${validation.blockingReasons.map(r => `
+                      <div>• ${escapeHtml(r)}</div>
                     `).join('')}
                   </div>
                 </div>

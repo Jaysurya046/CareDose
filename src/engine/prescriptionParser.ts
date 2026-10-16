@@ -343,16 +343,18 @@ function parseBlock(
     scheduleStatus = 'uncertain';
     timeSlots.push('morning', 'evening');
     unclearReasons.schedule = 'Prescription specifies "twice daily" without exact schedule hours. Please verify timing.';
-  } else if (/\b(?:three\s+times\s+daily|tid|q8h)\b/i.test(blockText) || /\{id|\+id/i.test(blockText)) {
+  } else if (/\b(?:three\s+times\s+daily|tid|q8h)\b/i.test(blockText)) {
     frequency = 'Three times daily';
     scheduleStatus = 'uncertain';
     timeSlots.push('morning', 'midday', 'evening');
-    if (/\{id|\+id/i.test(blockText)) {
-      frequencyStatus = 'uncertain';
-      unclearReasons.frequency = 'Handwriting token "{id" suggests "tid" (three times daily). Please confirm with prescriber.';
-    } else {
-      unclearReasons.schedule = 'Prescription specifies "three times daily". Confirm schedule slots with prescriber.';
-    }
+    unclearReasons.schedule = 'Prescription specifies "three times daily". Confirm schedule slots with prescriber.';
+  } else if (/\{id|\+id/i.test(blockText)) {
+    // Corrupted or ambiguous handwriting token: do NOT invent concrete schedule times
+    frequency = 'Uncertain ({id)';
+    frequencyStatus = 'uncertain';
+    scheduleStatus = 'uncertain';
+    unclearReasons.frequency = 'Handwriting token "{id" appears corrupted (possibly tid). Prescriber verification required.';
+    unclearReasons.schedule = 'Active reminder times cannot be scheduled from corrupted token "{id". Explicit verification required.';
   } else if (/\b(?:four\s+times\s+daily|qid|q6h)\b/i.test(blockText)) {
     frequency = 'Four times daily';
     scheduleStatus = 'uncertain';
@@ -739,6 +741,16 @@ export function validateDraftForImport(draft: PrescriptionMedicationDraft): {
     (draft.fieldStatuses.strength === 'uncertain' && draft.verificationStatus === 'pending')
   ) {
     blockingReasons.push(`Dosage strength ("${draft.strength}") contains unverified characters.`);
+  } else {
+    // Check if the strength value contains a degraded OCR unit misread (e.g. 5 me, 120 |me, 10 m9)
+    const degradedUnitRegex = /\b\d+(?:\.\d+)?\s*(?:\|?\s*(?:me|m9|mq|ug|meg))\b/i;
+    const validClinicalUnitRegex = /\b\d+(?:\.\d+)?\s*(?:mg(?:\s*\/\s*\d+\s*ml)?|mcg(?:\s*\/\s*hr)?|mEq|g|gm|ml|units?|iu|%)\b/i;
+
+    if (degradedUnitRegex.test(draft.strength)) {
+      blockingReasons.push(`Dosage strength ("${draft.strength}") contains a distorted OCR unit misread. Please edit and specify a valid clinical unit (e.g. mg, mcg, ml).`);
+    } else if (!validClinicalUnitRegex.test(draft.strength)) {
+      blockingReasons.push(`Dosage strength ("${draft.strength}") does not contain a recognized clinical unit (e.g. mg, mcg, ml).`);
+    }
   }
 
   // Check if draft has any unconfirmed blocking field
@@ -752,11 +764,13 @@ export function validateDraftForImport(draft: PrescriptionMedicationDraft): {
   }
 
   // Can we schedule active reminders?
+  // Strictly requires blockingReasons === 0 AND explicit verification status (cannot activate while pending)
   const canScheduleActiveReminder = 
     blockingReasons.length === 0 && 
     draft.timeSlots.length > 0 &&
     draft.fieldStatuses.schedule !== 'uncertain' &&
-    draft.fieldStatuses.schedule !== 'unreadable';
+    draft.fieldStatuses.schedule !== 'unreadable' &&
+    (draft.verificationStatus === 'user_confirmed' || draft.verificationStatus === 'professional_clarification');
 
   return {
     isSafeToImport: blockingReasons.length === 0,

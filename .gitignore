@@ -26,3 +26,6 @@ dist-ssr
 # Local agent / assistant guidelines
 CLAUDE.md
 CLAUDE.local.md
+
+# Tesseract trained data
+*.traineddata

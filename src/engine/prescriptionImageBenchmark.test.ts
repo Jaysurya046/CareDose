@@ -5,6 +5,7 @@ import {
   validateDraftForImport
 } from './prescriptionParser';
 import { segmentDocumentIntoRegions } from './documentLayout';
+import { recognizePrintedText, terminateOcrWorker } from '../services/ocrService';
 import type { TextRecognitionSegment } from '../types';
 
 /**
@@ -373,5 +374,80 @@ describe('Phase 3.2: OCR Pipeline Lifecycle & State Consistency Regressions', ()
 
     const footer = regions.find(r => r.zone === 'prescriber_footer');
     expect(footer).toBeDefined();
+  });
+
+  it('processes an actual document image file through the full OCR engine and measures execution latency separately from the parser', async () => {
+    const filePath = 'src/assets/test_rx_doc.png';
+
+    const ocrStartTime = performance.now();
+    const ocrResult = await recognizePrintedText(filePath);
+    const ocrDuration = performance.now() - ocrStartTime;
+
+    expect(ocrResult.text.length).toBeGreaterThan(0);
+    expect(ocrResult.lines).toBeDefined();
+    expect(ocrResult.lines!.length).toBeGreaterThan(0);
+
+    // Verify all extracted lines have valid bounding boxes
+    const linesWithBbox = ocrResult.lines!.filter(l => l.bbox && l.bbox.width > 0 && l.bbox.height > 0);
+    expect(linesWithBbox.length).toBe(ocrResult.lines!.length);
+
+    // Now measure parser execution latency separately
+    const parserStartTime = performance.now();
+    const { diagnostics } = parsePrescriptionTextWithDiagnostics(
+      ocrResult.text,
+      ocrResult.lines || [],
+      { scanRunId: 'scan_run_real_img_test' }
+    );
+    const parserDuration = performance.now() - parserStartTime;
+
+    console.log('\n================ ACTUAL IMAGE FILE OCR PIPELINE MEASUREMENT ================');
+    console.log(`Test Image: test_rx_doc.png`);
+    console.log(`Actual OCR Engine Latency: ${ocrDuration.toFixed(2)} ms`);
+    console.log(`In-Memory Parser Latency: ${parserDuration.toFixed(2)} ms`);
+    console.log(`Total Extracted Text: ${ocrResult.text.length} characters`);
+    console.log(`Total Extracted Lines: ${ocrResult.lines!.length}`);
+    console.log(`Lines with Preserved Bounding Boxes: ${linesWithBbox.length}`);
+    console.log(`Classified Zones in Diagnostics: ${diagnostics.classifiedZones.length}`);
+    console.log('=============================================================================\n');
+
+    expect(diagnostics.classifiedZones.length).toBeGreaterThan(0);
+    const zonesWithBbox = diagnostics.classifiedZones.filter(z => z.bbox !== undefined);
+    expect(zonesWithBbox.length).toBeGreaterThan(0);
+
+    await terminateOcrWorker();
+  }, 30000);
+
+  it('rejects corrupted OCR strength units (e.g. 5 me, 120 |me) from safe import even if marked user confirmed', () => {
+    const rawBlock = 'Bellidopnas 5 me';
+    const drafts = parsePrescriptionText(rawBlock);
+    expect(drafts.length).toBe(1);
+    const draft = drafts[0];
+
+    // Even if marked confirmed, '5 me' is a distorted OCR unit and must be blocked from import
+    draft.name = 'Belladonna';
+    draft.verificationStatus = 'user_confirmed';
+    draft.fieldStatuses.name = 'user_confirmed';
+    draft.fieldStatuses.strength = 'user_confirmed';
+
+    const blockedValidation = validateDraftForImport(draft);
+    expect(blockedValidation.isSafeToImport).toBe(false);
+    expect(blockedValidation.blockingReasons.some(r => r.includes('distorted OCR unit'))).toBe(true);
+
+    // Once user corrects to a valid clinical unit ('5 mg'), import is permitted
+    draft.strength = '5 mg';
+    const validValidation = validateDraftForImport(draft);
+    expect(validValidation.isSafeToImport).toBe(true);
+  });
+
+  it('does not invent active reminder schedule slots from ambiguous handwriting token {id', () => {
+    const rawBlock = 'Sep Sm {id ac';
+    const drafts = parsePrescriptionText(rawBlock);
+    expect(drafts.length).toBe(1);
+    const draft = drafts[0];
+
+    // Schedule slots must NOT be pre-populated from corrupted token {id
+    expect(draft.timeSlots).toEqual([]);
+    expect(draft.fieldStatuses.schedule).toBe('uncertain');
+    expect(validateDraftForImport(draft).canScheduleActiveReminder).toBe(false);
   });
 });

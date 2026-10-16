@@ -94,7 +94,7 @@ export async function recognizePrintedText(
     }
   }
 
-  let result = await worker.recognize(imageSource);
+  let result = await worker.recognize(imageSource, {}, { text: true, blocks: true } as any);
 
   if (isCancelled) {
     throw new Error('OCR recognition was cancelled by user');
@@ -109,7 +109,7 @@ export async function recognizePrintedText(
     try {
       if (onProgress) onProgress({ status: 'Running secondary sparse-text pass...', progress: 0.85 });
       await worker.setParameters({ tessedit_pageseg_mode: '11' as any });
-      const pass2 = await worker.recognize(imageSource);
+      const pass2 = await worker.recognize(imageSource, {}, { text: true, blocks: true } as any);
       if (pass2.data.text && pass2.data.text.trim().length > rawText.trim().length) {
         result = pass2;
         rawText = pass2.data.text;
@@ -126,71 +126,96 @@ export async function recognizePrintedText(
   const segments: TextRecognitionSegment[] = [];
   const lineSegments: TextRecognitionSegment[] = [];
 
-  // Extract lines with their native bounding boxes
+  // Robust line extraction across Tesseract.js v5, v6, v7 and legacy versions
+  const rawLines: any[] = [];
   if (Array.isArray(result.data.lines)) {
-    for (const l of result.data.lines) {
-      if (!l.text || !l.text.trim()) continue;
-
-      const bbox = l.bbox ? {
-        x: Math.round(l.bbox.x0),
-        y: Math.round(l.bbox.y0),
-        width: Math.round(l.bbox.x1 - l.bbox.x0),
-        height: Math.round(l.bbox.y1 - l.bbox.y0)
-      } : undefined;
-
-      const isUnclear = (typeof l.confidence === 'number' && l.confidence < 60);
-
-      const wordsInLine: TextRecognitionSegment[] = [];
-      if (Array.isArray(l.words)) {
-        for (const w of l.words) {
-          if (!w.text || !w.text.trim()) continue;
-          wordsInLine.push({
-            text: w.text.trim(),
-            confidence: w.confidence,
-            bbox: w.bbox ? {
-              x: Math.round(w.bbox.x0),
-              y: Math.round(w.bbox.y0),
-              width: Math.round(w.bbox.x1 - w.bbox.x0),
-              height: Math.round(w.bbox.y1 - w.bbox.y0)
-            } : undefined,
-            type: 'word'
-          });
+    rawLines.push(...result.data.lines);
+  } else if (Array.isArray(result.data.blocks)) {
+    for (const b of result.data.blocks) {
+      if (Array.isArray(b.paragraphs)) {
+        for (const p of b.paragraphs) {
+          if (Array.isArray(p.lines)) {
+            rawLines.push(...p.lines);
+          }
         }
+      } else if (Array.isArray(b.lines)) {
+        rawLines.push(...b.lines);
       }
-
-      lineSegments.push({
-        text: l.text.trim(),
-        confidence: l.confidence,
-        bbox,
-        type: 'line',
-        isHandwritingCandidate: isUnclear,
-        words: wordsInLine
-      });
     }
   }
 
-  // Extract words for fine-grained token lookup
-  if (Array.isArray(result.data.words)) {
-    for (const w of result.data.words) {
-      if (!w.text || !w.text.trim()) continue;
+  // Extract lines with their native bounding boxes
+  for (const l of rawLines) {
+    if (!l.text || !l.text.trim()) continue;
 
-      const bbox = w.bbox ? {
-        x: Math.round(w.bbox.x0),
-        y: Math.round(w.bbox.y0),
-        width: Math.round(w.bbox.x1 - w.bbox.x0),
-        height: Math.round(w.bbox.y1 - w.bbox.y0)
-      } : undefined;
+    const bbox = l.bbox ? {
+      x: Math.round(l.bbox.x0),
+      y: Math.round(l.bbox.y0),
+      width: Math.round(l.bbox.x1 - l.bbox.x0),
+      height: Math.round(l.bbox.y1 - l.bbox.y0)
+    } : undefined;
 
-      const isUnclear = (typeof w.confidence === 'number' && w.confidence < 60);
+    const isUnclear = (typeof l.confidence === 'number' && l.confidence < 60);
 
-      segments.push({
-        text: w.text.trim(),
-        confidence: w.confidence,
-        bbox,
-        type: 'word',
-        isHandwritingCandidate: isUnclear
-      });
+    const wordsInLine: TextRecognitionSegment[] = [];
+    if (Array.isArray(l.words)) {
+      for (const w of l.words) {
+        if (!w.text || !w.text.trim()) continue;
+        wordsInLine.push({
+          text: w.text.trim(),
+          confidence: w.confidence,
+          bbox: w.bbox ? {
+            x: Math.round(w.bbox.x0),
+            y: Math.round(w.bbox.y0),
+            width: Math.round(w.bbox.x1 - w.bbox.x0),
+            height: Math.round(w.bbox.y1 - w.bbox.y0)
+          } : undefined,
+          type: 'word'
+        });
+      }
     }
+
+    lineSegments.push({
+      text: l.text.trim(),
+      confidence: l.confidence,
+      bbox,
+      type: 'line',
+      isHandwritingCandidate: isUnclear,
+      words: wordsInLine
+    });
+  }
+
+  // Extract words for fine-grained token lookup
+  const rawWords: any[] = [];
+  if (Array.isArray(result.data.words)) {
+    rawWords.push(...result.data.words);
+  } else {
+    for (const l of rawLines) {
+      if (Array.isArray(l.words)) {
+        rawWords.push(...l.words);
+      }
+    }
+  }
+
+  for (const w of rawWords) {
+    if (!w.text || !w.text.trim()) continue;
+
+    const bbox = w.bbox ? {
+      x: Math.round(w.bbox.x0),
+      y: Math.round(w.bbox.y0),
+      width: Math.round(w.bbox.x1 - w.bbox.x0),
+      height: Math.round(w.bbox.y1 - w.bbox.y0)
+    } : undefined;
+
+    const isUnclear = (typeof w.confidence === 'number' && w.confidence < 60);
+
+    segments.push({
+      text: w.text.trim(),
+      confidence: w.confidence,
+      bbox,
+      type: 'word',
+      isHandwritingCandidate: isUnclear
+    });
   }
 
   return {
