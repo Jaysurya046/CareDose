@@ -670,3 +670,77 @@
 .rx-diag-badge.badge-unknown { background: #f3f4f6; color: #6b7280; }
 .rx-diag-badge.badge-accepted { background: #d1fae5; color: #065f46; }
 .rx-diag-badge.badge-rejected { background: #fee2e2; color: #991b1b; }
+
+/* Region-Assisted Selection Tool */
+.rx-canvas-stage.is-selecting-mode {
+  cursor: crosshair !important;
+  user-select: none !important;
+}
+
+.rx-canvas-stage.is-selecting-mode img {
+  pointer-events: none;
+}
+
+.rx-selection-marquee {
+  position: absolute;
+  border: 2px dashed #0284c7;
+  background: rgba(14, 165, 233, 0.2);
+  pointer-events: none;
+  z-index: 25;
+  box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.2);
+  border-radius: 2px;
+}
+
+.rx-region-instructions-toast {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, 0.9);
+  color: #fff;
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 500;
+  z-index: 30;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+}
+
+/* Stage Status Badges in Diagnostics */
+.rx-stage-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.rx-stage-badge.stage-success {
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+
+.rx-stage-badge.stage-warning {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+.rx-stage-badge.stage-failed {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.rx-stage-badge.stage-skipped {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}

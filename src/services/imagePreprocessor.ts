@@ -193,3 +193,36 @@ export async function preprocessImage(
     height: canvas.height
   };
 }
+
+/**
+ * Crops a sub-region from an image or canvas source and returns a new standalone canvas.
+ * Used for targeted region-assisted handwriting extraction and interactive transcription.
+ */
+export function cropCanvasRegion(
+  source: HTMLImageElement | HTMLCanvasElement,
+  region: { x: number; y: number; width: number; height: number }
+): HTMLCanvasElement {
+  const canvas = document.createElement('canvas');
+  const w = Math.max(10, Math.round(region.width));
+  const h = Math.max(10, Math.round(region.height));
+  canvas.width = w;
+  canvas.height = h;
+
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(
+      source,
+      Math.max(0, region.x),
+      Math.max(0, region.y),
+      region.width,
+      region.height,
+      0,
+      0,
+      w,
+      h
+    );
+  }
+  return canvas;
+}

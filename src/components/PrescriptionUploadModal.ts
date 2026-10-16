@@ -30,6 +30,7 @@ export function openPrescriptionUploadModal(onSuccess?: () => void): void {
   let useHighContrast = true;
   let isScanning = false;
   let previewDataUrl: string | null = null;
+  let activeScanRunId: string | null = null;
 
   modalBackdrop.innerHTML = `
     <div class="rx-modal-card upload-dialog" tabindex="-1">
@@ -167,8 +168,14 @@ export function openPrescriptionUploadModal(onSuccess?: () => void): void {
   closeBtn?.focus();
 
   const cleanup = () => {
+    activeScanRunId = null;
     if (isScanning) {
       cancelOcr();
+      isScanning = false;
+    }
+    if (previewDataUrl && previewDataUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(previewDataUrl);
+      previewDataUrl = null;
     }
     modalBackdrop.remove();
   };
@@ -221,7 +228,13 @@ export function openPrescriptionUploadModal(onSuccess?: () => void): void {
   });
 
   modalBackdrop.querySelector('#btn-retry-upload')?.addEventListener('click', () => {
+    if (isScanning) {
+      cancelOcr();
+      isScanning = false;
+    }
+    activeScanRunId = null;
     selectedFile = null;
+    currentRotation = 0;
     showView('dropzone');
   });
 
@@ -240,22 +253,36 @@ export function openPrescriptionUploadModal(onSuccess?: () => void): void {
       return;
     }
 
+    if (isScanning) {
+      cancelOcr();
+      isScanning = false;
+    }
+
+    const loadRunId = generateLocalId('file_load');
+    activeScanRunId = loadRunId;
     selectedFile = file;
+    currentRotation = 0;
     fileNameLabel.textContent = `${file.name} (${(file.size / 1024).toFixed(0)} KB)`;
 
     if (isImage) {
       try {
         const img = await loadImageFromFile(file);
+        if (activeScanRunId !== loadRunId) return;
+
         const { dataUrl } = await preprocessImage(img, {
           rotateDegrees: currentRotation,
           grayscale: useHighContrast,
           enhanceContrast: useHighContrast
         });
+        if (activeScanRunId !== loadRunId) return;
+
         previewDataUrl = dataUrl;
         previewImg.src = dataUrl;
         showView('preview');
       } catch (err: any) {
-        showError(`Failed to load image: ${err.message || err}`);
+        if (activeScanRunId === loadRunId) {
+          showError(`Failed to load image: ${err.message || err}`);
+        }
       }
     } else {
       // PDF document preview: render page 1 thumbnail
@@ -263,6 +290,8 @@ export function openPrescriptionUploadModal(onSuccess?: () => void): void {
         progressText.textContent = 'Rendering PDF document preview...';
         showView('progress');
         const pdfResult = await processPdfDocument(file);
+        if (activeScanRunId !== loadRunId) return;
+
         if (pdfResult.pages.length > 0) {
           previewDataUrl = pdfResult.pages[0].imageDataUrl;
           previewImg.src = previewDataUrl;
@@ -271,7 +300,9 @@ export function openPrescriptionUploadModal(onSuccess?: () => void): void {
           showError('No pages could be extracted from this PDF.');
         }
       } catch (err: any) {
-        showError(`PDF error: ${err.message || err}`);
+        if (activeScanRunId === loadRunId) {
+          showError(`PDF error: ${err.message || err}`);
+        }
       }
     }
   };
@@ -331,7 +362,17 @@ export function openPrescriptionUploadModal(onSuccess?: () => void): void {
   });
 
   modalBackdrop.querySelector('#btn-replace-file')?.addEventListener('click', () => {
+    if (isScanning) {
+      cancelOcr();
+      isScanning = false;
+    }
+    activeScanRunId = null;
     selectedFile = null;
+    currentRotation = 0;
+    if (previewDataUrl && previewDataUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(previewDataUrl);
+      previewDataUrl = null;
+    }
     showView('dropzone');
   });
 
@@ -342,12 +383,16 @@ export function openPrescriptionUploadModal(onSuccess?: () => void): void {
   modalBackdrop.querySelector('#btn-cancel-scan')?.addEventListener('click', () => {
     cancelOcr();
     isScanning = false;
+    activeScanRunId = null;
     showView('preview');
   });
 
   // Start Scan & Analysis
   modalBackdrop.querySelector('#btn-start-scan')?.addEventListener('click', async () => {
     if (!selectedFile) return;
+
+    const currentScanRunId = generateLocalId('scan_run');
+    activeScanRunId = currentScanRunId;
 
     isScanning = true;
     showView('progress');
@@ -370,12 +415,16 @@ export function openPrescriptionUploadModal(onSuccess?: () => void): void {
         progressFill.style.width = '20%';
 
         const pdfResult = await processPdfDocument(selectedFile, (status, curr, total) => {
-          progressText.textContent = status;
-          progressFill.style.width = `${Math.round(20 + (curr / total) * 30)}%`;
+          if (activeScanRunId === currentScanRunId) {
+            progressText.textContent = status;
+            progressFill.style.width = `${Math.round(20 + (curr / total) * 30)}%`;
+          }
         });
+        if (activeScanRunId !== currentScanRunId) return;
 
         // For each page, if it has native text use it; otherwise run OCR on canvas
         for (let i = 0; i < pdfResult.pages.length; i++) {
+          if (activeScanRunId !== currentScanRunId) return;
           const page = pdfResult.pages[i];
           let pageText = page.selectableText;
           let pageSegments = page.segments;
@@ -383,10 +432,13 @@ export function openPrescriptionUploadModal(onSuccess?: () => void): void {
           if (!page.hasSelectableText) {
             progressText.textContent = `Running local OCR on scanned PDF page ${page.pageNumber}...`;
             const ocrResult = await recognizePrintedText(page.imageDataUrl, (info) => {
-              progressText.textContent = `Page ${page.pageNumber}: ${info.status}`;
+              if (activeScanRunId === currentScanRunId) {
+                progressText.textContent = `Page ${page.pageNumber}: ${info.status}`;
+              }
             });
+            if (activeScanRunId !== currentScanRunId) return;
             pageText = ocrResult.text;
-            pageSegments = ocrResult.segments || [];
+            pageSegments = (ocrResult.lines && ocrResult.lines.length > 0) ? ocrResult.lines : (ocrResult.segments || []);
           }
 
           pagesData.push({
@@ -402,33 +454,43 @@ export function openPrescriptionUploadModal(onSuccess?: () => void): void {
         progressText.textContent = 'Preprocessing image for recognition...';
 
         const rawImg = await loadImageFromFile(selectedFile);
+        if (activeScanRunId !== currentScanRunId) return;
+
         const preprocessed = await preprocessImage(rawImg, {
           rotateDegrees: currentRotation,
           grayscale: useHighContrast,
           enhanceContrast: useHighContrast
         });
+        if (activeScanRunId !== currentScanRunId) return;
 
         progressFill.style.width = '40%';
         progressText.textContent = 'Running printed-text recognition engine...';
 
         const ocrResult = await recognizePrintedText(preprocessed.dataUrl, (info) => {
-          progressText.textContent = info.status;
-          progressFill.style.width = `${Math.round(40 + info.progress * 35)}%`;
+          if (activeScanRunId === currentScanRunId) {
+            progressText.textContent = info.status;
+            progressFill.style.width = `${Math.round(40 + info.progress * 35)}%`;
+          }
         });
+        if (activeScanRunId !== currentScanRunId) return;
+
+        // Extract line segments with true bounding boxes
+        const lineSegments = (ocrResult.lines && ocrResult.lines.length > 0) ? ocrResult.lines : (ocrResult.segments || []);
 
         // Analyze handwriting evidence and cursive stroke characteristics
         progressFill.style.width = '80%';
         progressText.textContent = 'Checking for handwritten clinical annotations...';
 
-        // Reconcile OCR segments with handwriting analysis
         const canvas = document.createElement('canvas');
         canvas.width = preprocessed.width;
         canvas.height = preprocessed.height;
 
-        const hwAnalysis = await analyzeHandwritingEvidence(canvas, ocrResult.segments || []);
+        const hwAnalysis = await analyzeHandwritingEvidence(canvas, lineSegments);
+        if (activeScanRunId !== currentScanRunId) return;
+
         const { reconciledText, annotatedSegments } = reconcileRecognitionEvidence(
           ocrResult.text,
-          ocrResult.segments || [],
+          lineSegments,
           hwAnalysis
         );
 
@@ -440,6 +502,8 @@ export function openPrescriptionUploadModal(onSuccess?: () => void): void {
         });
       }
 
+      if (activeScanRunId !== currentScanRunId) return;
+
       progressFill.style.width = '90%';
       progressText.textContent = 'Extracting medication fields and checking ambiguities...';
 
@@ -447,7 +511,18 @@ export function openPrescriptionUploadModal(onSuccess?: () => void): void {
       const combinedText = pagesData.map(p => p.rawText).join('\n\n');
       const allSegments = pagesData.flatMap(p => p.segments);
 
-      const { drafts, diagnostics } = parsePrescriptionTextWithDiagnostics(combinedText, allSegments);
+      const firstPage = pagesData[0];
+      const { drafts, diagnostics } = parsePrescriptionTextWithDiagnostics(
+        combinedText,
+        allSegments,
+        {
+          scanRunId: currentScanRunId,
+          ocrEngine: 'Tesseract.js v5 (Offline WASM)',
+          documentDimensions: firstPage ? { width: 1000, height: 1400 } : undefined
+        }
+      );
+
+      if (activeScanRunId !== currentScanRunId) return;
 
       progressFill.style.width = '100%';
       isScanning = false;
@@ -470,8 +545,10 @@ export function openPrescriptionUploadModal(onSuccess?: () => void): void {
       openPrescriptionReviewModal(scanSession, onSuccess);
 
     } catch (err: any) {
-      isScanning = false;
-      showError(err.message || 'An error occurred during local document analysis.');
+      if (activeScanRunId === currentScanRunId) {
+        isScanning = false;
+        showError(err.message || 'An error occurred during local document analysis.');
+      }
     }
   });
 }

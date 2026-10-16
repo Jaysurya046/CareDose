@@ -61,6 +61,8 @@ export interface TextRecognitionSegment {
   confidence?: number;
   bbox?: BoundingBox;
   isHandwritingCandidate?: boolean;
+  type?: 'line' | 'word';
+  words?: TextRecognitionSegment[];
 }
 
 export interface TextRecognitionResult {
@@ -70,7 +72,10 @@ export interface TextRecognitionResult {
   region?: BoundingBox;
   alternatives?: string[];
   segments?: TextRecognitionSegment[];
+  lines?: TextRecognitionSegment[];
   pageIndex?: number;
+  width?: number;
+  height?: number;
 }
 
 export interface PrescriptionMedicationDraft {
@@ -123,7 +128,19 @@ export interface CandidateEvaluation {
   zone: DocumentZoneType;
 }
 
+export interface RecognitionStageStatus {
+  stage: string;
+  name: string;
+  status: 'success' | 'warning' | 'skipped' | 'failed';
+  summary: string;
+  details?: Record<string, any>;
+}
+
 export interface RecognitionDiagnostics {
+  scanRunId?: string;
+  timestamp?: string;
+  documentDimensions?: { width: number; height: number };
+  ocrEngine?: string;
   totalRegions: number;
   classifiedZones: Array<{
     zone: DocumentZoneType;
@@ -133,6 +150,8 @@ export interface RecognitionDiagnostics {
   }>;
   candidateEvaluations: CandidateEvaluation[];
   processingPasses: string[];
+  stages?: RecognitionStageStatus[];
+  stageFailureSummary?: string;
   ocrPasses?: Array<{
     pass: number;
     psm: number;

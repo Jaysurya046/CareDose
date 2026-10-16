@@ -14,13 +14,14 @@ import type {
   PrescriptionMedicationDraft,
   TimeSlot,
   FieldStatus,
-  RecognitionDiagnostics
+  RecognitionDiagnostics,
+  BoundingBox
 } from '../types';
 import { generateLocalId } from '../utils/sanitize';
 import { findCatalogSuggestions, validateDraftForImport } from '../engine/prescriptionParser';
+import { recognizeCroppedRegion } from '../services/ocrService';
 import { openPrescriptionImportSummary } from './PrescriptionImportSummary';
 import { openPrescriptionUploadModal } from './PrescriptionUploadModal';
-import { openMedicationModal } from './MedicationModal';
 
 function escapeHtml(str: string): string {
   return str
@@ -63,12 +64,17 @@ function openDiagnosticsModal(diagnostics?: RecognitionDiagnostics): void {
     <div class="rx-diagnostics-card">
       <div class="rx-diagnostics-header">
         <div>
-          <h3 id="rx-diag-title" style="margin: 0; font-size: 1.125rem; font-weight: 700;">Developer Diagnostics: Document Layout &amp; Candidate Detection</h3>
+          <h3 id="rx-diag-title" style="margin: 0; font-size: 1.125rem; font-weight: 700;">Developer Diagnostics: 5-Stage Pipeline &amp; Document Geometry</h3>
           <p style="margin: 0.25rem 0 0; font-size: 0.75rem; color: var(--text-muted);">
-            Inspected ${diagnostics.totalRegions} document regions across ${diagnostics.classifiedZones.length} classified layout zones.
+            Scan ID: <code>${escapeHtml(diagnostics.scanRunId || 'session-scan')}</code> • Engine: ${escapeHtml(diagnostics.ocrEngine || 'Tesseract.js v5 (Offline WASM)')} • ${diagnostics.totalRegions} document regions inspected
           </p>
         </div>
-        <button type="button" class="btn btn-secondary btn-sm" id="btn-close-diag">Close</button>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-export-sanitized-report" title="Export a de-identified JSON diagnostic report for engineering review">
+            <span>Export Sanitized Report</span>
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-close-diag">Close</button>
+        </div>
       </div>
 
       <div class="rx-diagnostics-body">
@@ -81,6 +87,41 @@ function openDiagnosticsModal(diagnostics?: RecognitionDiagnostics): void {
           <div>
             <strong>100% On-Device Privacy:</strong> All OCR layout analysis, candidate evaluations, and diagnostics run purely inside browser memory. No patient information or scanned documents are logged or sent to any external service.
           </div>
+        </div>
+
+        ${diagnostics.stageFailureSummary ? `
+          <div class="rx-notice-banner notice-caution" style="font-size: 0.8125rem;">
+            <strong>Pipeline Status / Stage Notice:</strong>
+            <div>${escapeHtml(diagnostics.stageFailureSummary)}</div>
+          </div>
+        ` : ''}
+
+        <!-- Section 0: 5-Stage Pipeline Telemetry -->
+        <div>
+          <h4 style="font-size: 0.9375rem; font-weight: 700; margin: 0 0 0.5rem;">
+            Pipeline Stage Telemetry (Stages 1 through 5)
+          </h4>
+          ${(diagnostics.stages && diagnostics.stages.length > 0) ? `
+            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+              ${diagnostics.stages.map(st => {
+                const badgeClass = `stage-${st.status}`;
+                const icon = st.status === 'success' ? '✓' : st.status === 'warning' ? '⚠️' : st.status === 'failed' ? '✗' : '–';
+                return `
+                  <div style="display: flex; align-items: flex-start; justify-content: space-between; padding: 0.625rem 0.75rem; background: var(--bg-surface-alt); border: 1px solid var(--border-light); border-radius: var(--radius-sm); font-size: 0.8125rem;">
+                    <div>
+                      <div style="font-weight: 600; color: var(--text-main);">${escapeHtml(st.name)}</div>
+                      <div style="color: var(--text-muted); font-size: 0.75rem; margin-top: 2px;">${escapeHtml(st.summary)}</div>
+                    </div>
+                    <span class="rx-stage-badge ${badgeClass}" style="flex-shrink: 0; margin-left: 0.5rem;">
+                      ${icon} ${st.status.toUpperCase()}
+                    </span>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          ` : `
+            <p style="color: var(--text-muted); font-size: 0.8125rem;">Stage telemetry unavailable for this scan.</p>
+          `}
         </div>
 
         <!-- Section 1: Candidate Evaluations -->
@@ -132,7 +173,7 @@ function openDiagnosticsModal(diagnostics?: RecognitionDiagnostics): void {
           </div>
         </div>
 
-        <!-- Section 2: Document Layout Classification -->
+        <!-- Section 2: Document Layout Classification & Coordinates -->
         <div>
           <h4 style="font-size: 0.9375rem; font-weight: 700; margin: 0 0 0.5rem;">
             Document Layout Classification (${diagnostics.classifiedZones.length} Classified Zones)
@@ -142,7 +183,7 @@ function openDiagnosticsModal(diagnostics?: RecognitionDiagnostics): void {
               <thead>
                 <tr>
                   <th style="width: 170px;">Zone Type</th>
-                  <th style="width: 130px;">Coordinates</th>
+                  <th style="width: 150px;">Source Coordinates</th>
                   <th>Zone Snippet &amp; Classification Rule</th>
                 </tr>
               </thead>
@@ -158,7 +199,7 @@ function openDiagnosticsModal(diagnostics?: RecognitionDiagnostics): void {
                     <tr>
                       <td><span class="rx-diag-badge ${badgeClass}">${r.zone}</span></td>
                       <td style="font-family: monospace; font-size: 0.75rem;">
-                        ${r.bbox ? `[${r.bbox.x}, ${r.bbox.y}, ${r.bbox.width}, ${r.bbox.height}]` : 'N/A'}
+                        ${r.bbox ? `x:${r.bbox.x}, y:${r.bbox.y}, w:${r.bbox.width}, h:${r.bbox.height}` : 'Doc Flow (Auto)'}
                       </td>
                       <td>
                         <div style="font-size: 0.75rem; font-weight: 600;">"${escapeHtml(r.snippet)}"</div>
@@ -174,7 +215,7 @@ function openDiagnosticsModal(diagnostics?: RecognitionDiagnostics): void {
 
         <!-- Section 3: Processing Passes & OCR Telemetry -->
         <div>
-          <h4 style="font-size: 0.9375rem; font-weight: 700; margin: 0 0 0.5rem;">Pipeline Stages &amp; OCR Telemetry</h4>
+          <h4 style="font-size: 0.9375rem; font-weight: 700; margin: 0 0 0.5rem;">Pipeline Passes &amp; OCR Engine Telemetry</h4>
           <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem;">
             ${diagnostics.processingPasses.map(p => `
               <span class="badge" style="background: var(--bg-surface-alt); border: 1px solid var(--border-light); font-size: 0.75rem;">
@@ -215,6 +256,321 @@ function openDiagnosticsModal(diagnostics?: RecognitionDiagnostics): void {
   backdrop.querySelector('#btn-close-diag')?.addEventListener('click', () => backdrop.remove());
   backdrop.addEventListener('click', (e) => {
     if (e.target === backdrop) backdrop.remove();
+  });
+
+  // Export Sanitized Diagnostic Report (Zero Patient PII)
+  backdrop.querySelector('#btn-export-sanitized-report')?.addEventListener('click', () => {
+    const sanitizedReport = {
+      reportType: 'CareDose_OCR_Diagnostics_Sanitized',
+      version: '3.2',
+      exportedAt: new Date().toISOString(),
+      scanRunId: diagnostics.scanRunId || 'session-scan',
+      ocrEngine: diagnostics.ocrEngine || 'Tesseract.js v5 (Offline WASM)',
+      documentDimensions: diagnostics.documentDimensions,
+      stageFailureSummary: diagnostics.stageFailureSummary,
+      stages: diagnostics.stages,
+      totalRegions: diagnostics.totalRegions,
+      classifiedZonesSummary: diagnostics.classifiedZones.reduce((acc: any, z) => {
+        acc[z.zone] = (acc[z.zone] || 0) + 1;
+        return acc;
+      }, {}),
+      candidateEvaluationsSummary: {
+        totalEvaluated: diagnostics.candidateEvaluations.length,
+        accepted: diagnostics.candidateEvaluations.filter(e => e.accepted).length,
+        rejected: diagnostics.candidateEvaluations.filter(e => !e.accepted).length,
+        rejectionReasons: diagnostics.candidateEvaluations.filter(e => !e.accepted).map(e => e.rejectionReason)
+      },
+      processingPasses: diagnostics.processingPasses
+    };
+
+    const blob = new Blob([JSON.stringify(sanitizedReport, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `caredose-diagnostics-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+}
+
+/**
+ * Interactive Dialog for Region-Assisted Selection and Manual Transcription.
+ */
+function openRegionTranscriptionDialog(
+  cropDataUrl: string,
+  bbox: BoundingBox,
+  onSave: (draft: PrescriptionMedicationDraft) => void
+): void {
+  const existing = document.getElementById('rx-region-transcribe-modal');
+  if (existing) existing.remove();
+
+  const backdrop = document.createElement('div');
+  backdrop.id = 'rx-region-transcribe-modal';
+  backdrop.className = 'rx-modal-backdrop';
+  backdrop.style.zIndex = '1100';
+
+  backdrop.innerHTML = `
+    <div class="rx-modal-card" style="max-width: 600px; max-height: 90vh;" tabindex="-1">
+      <div class="rx-modal-header">
+        <div class="rx-modal-title-group">
+          <h3 style="margin: 0; font-size: 1.125rem;">Region-Assisted Medication Extraction</h3>
+          <p style="margin: 0.25rem 0 0; font-size: 0.75rem; color: var(--text-muted);">
+            Isolated prescription region (${bbox.width}x${bbox.height} px).
+          </p>
+        </div>
+        <button type="button" class="rx-modal-close-btn" id="btn-close-region-crop" aria-label="Close dialog">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="rx-upload-body" style="padding: 1.25rem; overflow-y: auto; display: flex; flex-direction: column; gap: 1rem;">
+        <!-- Cropped Image Preview -->
+        <div style="background: #f8fafc; border: 1.5px solid var(--border-main); border-radius: var(--radius-md); padding: 0.75rem; text-align: center;">
+          <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.5rem; text-align: left;">
+            Selected Prescription Region:
+          </div>
+          <img src="${cropDataUrl}" alt="Selected prescription region" style="max-height: 120px; max-width: 100%; object-fit: contain; border-radius: 4px;" />
+        </div>
+
+        <!-- Recognition Status / Telemetry -->
+        <div id="region-ocr-status" class="rx-notice-banner notice-info" style="font-size: 0.8125rem;">
+          <span>Running targeted OCR on selected region (PSM 6 Line Mode)...</span>
+        </div>
+
+        <div class="rx-notice-banner notice-caution" style="font-size: 0.75rem;">
+          <strong>Clinical Transcription Guard:</strong> Handwriting recognition has optical limitations. Verify that the transcribed name and strength match the doctor's handwriting before saving.
+        </div>
+
+        <!-- Form fields -->
+        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+          <div>
+            <label for="reg-crop-name" style="display: block; font-size: 0.8125rem; font-weight: 600; margin-bottom: 0.25rem;">Medication Name *</label>
+            <input type="text" id="reg-crop-name" class="form-input" placeholder="e.g. Amoxicillin, Paracetamol" />
+            <div id="reg-crop-suggestions" style="display: none; margin-top: 0.25rem;"></div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+            <div>
+              <label for="reg-crop-strength" style="display: block; font-size: 0.8125rem; font-weight: 600; margin-bottom: 0.25rem;">Strength *</label>
+              <input type="text" id="reg-crop-strength" class="form-input" placeholder="e.g. 500 mg, 120 mg" />
+            </div>
+            <div>
+              <label for="reg-crop-form" style="display: block; font-size: 0.8125rem; font-weight: 600; margin-bottom: 0.25rem;">Dosage Form</label>
+              <select id="reg-crop-form" class="form-select">
+                <option value="Tablet">Tablet</option>
+                <option value="Capsule">Capsule</option>
+                <option value="Liquid">Liquid / Syrup</option>
+                <option value="Inhaler">Inhaler</option>
+                <option value="Drops">Drops</option>
+                <option value="Topical">Topical / Cream</option>
+                <option value="Injection">Injection</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+            <div>
+              <label for="reg-crop-doseqty" style="display: block; font-size: 0.8125rem; font-weight: 600; margin-bottom: 0.25rem;">Dose Quantity</label>
+              <input type="text" id="reg-crop-doseqty" class="form-input" value="1 tablet" />
+            </div>
+            <div>
+              <label for="reg-crop-freq" style="display: block; font-size: 0.8125rem; font-weight: 600; margin-bottom: 0.25rem;">Frequency</label>
+              <select id="reg-crop-freq" class="form-select">
+                <option value="Once daily">Once daily</option>
+                <option value="Twice daily">Twice daily (bid)</option>
+                <option value="Three times daily">Three times daily (tid)</option>
+                <option value="Four times daily">Four times daily (qid)</option>
+                <option value="As needed (PRN)">As needed (PRN)</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label style="display: block; font-size: 0.8125rem; font-weight: 600; margin-bottom: 0.25rem;">Scheduled Slots</label>
+            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+              <label style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.8125rem;">
+                <input type="checkbox" class="reg-crop-slot" value="morning" checked /> Morning
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.8125rem;">
+                <input type="checkbox" class="reg-crop-slot" value="midday" /> Midday
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.8125rem;">
+                <input type="checkbox" class="reg-crop-slot" value="evening" /> Evening
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.8125rem;">
+                <input type="checkbox" class="reg-crop-slot" value="bedtime" /> Bedtime
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <label for="reg-crop-instructions" style="display: block; font-size: 0.8125rem; font-weight: 600; margin-bottom: 0.25rem;">Instructions / Sig</label>
+            <input type="text" id="reg-crop-instructions" class="form-input" placeholder="e.g. Take with food, after meals" />
+          </div>
+        </div>
+      </div>
+
+      <div class="rx-modal-footer">
+        <button type="button" class="btn btn-secondary" id="btn-cancel-reg-crop">Cancel</button>
+        <button type="button" class="btn btn-primary" id="btn-save-reg-crop">
+          <span>Add to Medication Drafts</span>
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(backdrop);
+
+  const close = () => backdrop.remove();
+  backdrop.querySelector('#btn-close-region-crop')?.addEventListener('click', close);
+  backdrop.querySelector('#btn-cancel-reg-crop')?.addEventListener('click', close);
+
+  const nameInput = backdrop.querySelector('#reg-crop-name') as HTMLInputElement;
+  const strengthInput = backdrop.querySelector('#reg-crop-strength') as HTMLInputElement;
+  const formSelect = backdrop.querySelector('#reg-crop-form') as HTMLSelectElement;
+  const doseQtyInput = backdrop.querySelector('#reg-crop-doseqty') as HTMLInputElement;
+  const freqSelect = backdrop.querySelector('#reg-crop-freq') as HTMLSelectElement;
+  const instructionsInput = backdrop.querySelector('#reg-crop-instructions') as HTMLInputElement;
+  const statusEl = backdrop.querySelector('#region-ocr-status') as HTMLElement;
+  const suggestionsMount = backdrop.querySelector('#reg-crop-suggestions') as HTMLElement;
+
+  // Run targeted OCR
+  recognizeCroppedRegion(cropDataUrl, { psm: 6 })
+    .then(res => {
+      const recognized = res.text.trim();
+      const conf = Math.round(res.confidence || 0);
+
+      statusEl.className = 'rx-notice-banner notice-info';
+      statusEl.innerHTML = `
+        <div>
+          <strong>Targeted OCR Result (PSM 6):</strong>
+          <span style="font-family: monospace; background: #e2e8f0; padding: 2px 4px; border-radius: 3px;">"${escapeHtml(recognized || '(No text detected)')}"</span>
+          <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 0.5rem;">(Confidence: ${conf}%)</span>
+        </div>
+      `;
+
+      if (recognized) {
+        const strengthMatch = recognized.match(/\b(\d+(?:\.\d+)?)\s*(mg|mcg|ml|g|%|me|m9|mq)\b/i);
+        if (strengthMatch) {
+          const rawU = strengthMatch[2].toLowerCase();
+          const normU = (rawU === 'me' || rawU === 'm9' || rawU === 'mq') ? 'mg' : rawU;
+          strengthInput.value = `${strengthMatch[1]} ${normU}`;
+        }
+
+        const tokens = recognized
+          .replace(/^(?:\d+[\.\)]|Rx:?|Item\s*\d+:?|#\d+:?)\s*/i, '')
+          .split(/\s+/)
+          .map(t => t.replace(/[^a-zA-Z]/g, ''))
+          .filter(t => t.length >= 3);
+
+        if (tokens[0]) {
+          nameInput.value = tokens[0];
+          const matches = findCatalogSuggestions(tokens[0]);
+          if (matches.length > 0) {
+            suggestionsMount.style.display = 'block';
+            suggestionsMount.innerHTML = `
+              <div style="font-size: 0.75rem; color: var(--text-muted);">
+                Suggested catalog matches:<br/>
+                ${matches.map(m => `
+                  <button type="button" class="btn btn-secondary btn-sm btn-reg-pick" data-name="${m.name}" style="margin: 2px; padding: 1px 5px; font-size: 0.75rem;">
+                    ${m.name}
+                  </button>
+                `).join('')}
+              </div>
+            `;
+            suggestionsMount.querySelectorAll('.btn-reg-pick').forEach(b => {
+              b.addEventListener('click', (e) => {
+                nameInput.value = (e.currentTarget as HTMLElement).dataset.name!;
+                suggestionsMount.style.display = 'none';
+              });
+            });
+          }
+        }
+      }
+    })
+    .catch(err => {
+      statusEl.className = 'rx-notice-banner notice-caution';
+      statusEl.innerHTML = `<span>Could not run automatic OCR: ${escapeHtml(err.message || String(err))}. Please type the prescription details manually.</span>`;
+    });
+
+  // Autocomplete on manual name typing
+  nameInput.addEventListener('input', () => {
+    const val = nameInput.value.trim();
+    if (val.length >= 2) {
+      const matches = findCatalogSuggestions(val);
+      if (matches.length > 0) {
+        suggestionsMount.style.display = 'block';
+        suggestionsMount.innerHTML = `
+          <div style="font-size: 0.75rem; color: var(--text-muted);">
+            Suggested catalog matches:<br/>
+            ${matches.map(m => `
+              <button type="button" class="btn btn-secondary btn-sm btn-reg-pick" data-name="${m.name}" style="margin: 2px; padding: 1px 5px; font-size: 0.75rem;">
+                ${m.name}
+              </button>
+            `).join('')}
+          </div>
+        `;
+        suggestionsMount.querySelectorAll('.btn-reg-pick').forEach(b => {
+          b.addEventListener('click', (e) => {
+            nameInput.value = (e.currentTarget as HTMLElement).dataset.name!;
+            suggestionsMount.style.display = 'none';
+          });
+        });
+        return;
+      }
+    }
+    suggestionsMount.style.display = 'none';
+  });
+
+  // Save handler
+  backdrop.querySelector('#btn-save-reg-crop')?.addEventListener('click', () => {
+    const medName = nameInput.value.trim();
+    const strength = strengthInput.value.trim();
+
+    if (!medName) {
+      alert('Please enter a medication name before saving.');
+      nameInput.focus();
+      return;
+    }
+
+    const selectedSlots: TimeSlot[] = [];
+    backdrop.querySelectorAll('.reg-crop-slot:checked').forEach(cb => {
+      selectedSlots.push((cb as HTMLInputElement).value as TimeSlot);
+    });
+
+    const newDraft: PrescriptionMedicationDraft = {
+      id: generateLocalId('draft'),
+      sourceSnippet: `Selected region crop (${bbox.width}x${bbox.height}px)`,
+      name: medName,
+      genericName: null,
+      strength: strength || null,
+      doseQuantity: doseQtyInput.value.trim() || '1 tablet',
+      dosageForm: formSelect.value,
+      frequency: freqSelect.value,
+      scheduledTimes: null,
+      timeSlots: selectedSlots.length > 0 ? selectedSlots : ['morning'],
+      duration: null,
+      instructions: instructionsInput.value.trim() || null,
+      rxCui: null,
+      prescribedBy: null,
+      fieldStatuses: {
+        name: 'user_confirmed',
+        strength: strength ? 'user_confirmed' : 'uncertain',
+        doseQuantity: 'user_confirmed',
+        dosageForm: 'user_confirmed',
+        frequency: 'user_confirmed',
+        schedule: 'user_confirmed'
+      },
+      verificationStatus: 'user_confirmed',
+      boundingBox: bbox,
+      isExcluded: false
+    };
+
+    onSave(newDraft);
+    close();
   });
 }
 
@@ -287,7 +643,7 @@ export function openPrescriptionReviewModal(
         <!-- Left: Document Viewport -->
         <section class="rx-doc-pane" id="rx-doc-pane" aria-label="Original Prescription Document Viewer">
           <div class="rx-doc-toolbar">
-            <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
               <button type="button" class="btn btn-secondary btn-sm" id="btn-zoom-out" title="Zoom out document" aria-label="Zoom out">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
               </button>
@@ -296,6 +652,13 @@ export function openPrescriptionReviewModal(
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
               </button>
               <button type="button" class="btn btn-secondary btn-sm" id="btn-zoom-reset" title="Reset zoom to fit">Reset</button>
+
+              <button type="button" class="btn btn-secondary btn-sm" id="btn-select-region" title="Select and crop a handwritten medication region from the prescription image">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" stroke-dasharray="3 3"></rect>
+                </svg>
+                <span>Select Region</span>
+              </button>
             </div>
 
             ${session.pageCount > 1 ? `
@@ -311,6 +674,10 @@ export function openPrescriptionReviewModal(
             <div class="rx-canvas-stage" id="canvas-stage">
               <img id="prescription-doc-img" alt="Scanned prescription original document" />
               <div class="rx-highlight-overlay" id="highlight-box" style="display: none;"></div>
+              <div class="rx-selection-marquee" id="selection-marquee" style="display: none;"></div>
+              <div class="rx-region-instructions-toast" id="region-toast" style="display: none;">
+                <span>Click and drag over a handwritten medication entry to crop &amp; recognize</span>
+              </div>
             </div>
           </div>
         </section>
@@ -375,6 +742,11 @@ export function openPrescriptionReviewModal(
   const tabBtnDoc = modalBackdrop.querySelector('#tab-btn-doc') as HTMLElement;
   const tabBtnMeds = modalBackdrop.querySelector('#tab-btn-meds') as HTMLElement;
 
+  const canvasStage = modalBackdrop.querySelector('#canvas-stage') as HTMLElement;
+  const selectRegionBtn = modalBackdrop.querySelector('#btn-select-region') as HTMLButtonElement;
+  const selectionMarquee = modalBackdrop.querySelector('#selection-marquee') as HTMLElement;
+  const regionToast = modalBackdrop.querySelector('#region-toast') as HTMLElement;
+
   // Cleanup handler
   const cleanup = () => {
     modalBackdrop.remove();
@@ -434,6 +806,111 @@ export function openPrescriptionReviewModal(
   modalBackdrop.querySelector('#btn-zoom-out')?.addEventListener('click', () => updateZoom(currentZoom - 0.25));
   modalBackdrop.querySelector('#btn-zoom-reset')?.addEventListener('click', () => updateZoom(1.0));
 
+  // Region-assisted selection state & handlers
+  let isSelectingRegion = false;
+  let isMarqueeActive = false;
+  let startClientX = 0;
+  let startClientY = 0;
+
+  const toggleRegionSelection = (force?: boolean) => {
+    isSelectingRegion = typeof force === 'boolean' ? force : !isSelectingRegion;
+    if (isSelectingRegion) {
+      canvasStage.classList.add('is-selecting-mode');
+      selectRegionBtn?.classList.remove('btn-secondary');
+      selectRegionBtn?.classList.add('btn-primary');
+      if (regionToast) regionToast.style.display = 'flex';
+      activeMobileTab = 'doc';
+      updateMobileTabs();
+    } else {
+      canvasStage.classList.remove('is-selecting-mode');
+      selectRegionBtn?.classList.remove('btn-primary');
+      selectRegionBtn?.classList.add('btn-secondary');
+      if (regionToast) regionToast.style.display = 'none';
+      if (selectionMarquee) selectionMarquee.style.display = 'none';
+      isMarqueeActive = false;
+    }
+  };
+
+  selectRegionBtn?.addEventListener('click', () => toggleRegionSelection());
+
+  canvasStage.addEventListener('mousedown', (e: MouseEvent) => {
+    if (!isSelectingRegion) return;
+    isMarqueeActive = true;
+    const rect = canvasStage.getBoundingClientRect();
+    startClientX = e.clientX - rect.left;
+    startClientY = e.clientY - rect.top;
+    if (selectionMarquee) {
+      selectionMarquee.style.display = 'block';
+      selectionMarquee.style.left = `${startClientX}px`;
+      selectionMarquee.style.top = `${startClientY}px`;
+      selectionMarquee.style.width = '0px';
+      selectionMarquee.style.height = '0px';
+    }
+  });
+
+  canvasStage.addEventListener('mousemove', (e: MouseEvent) => {
+    if (!isSelectingRegion || !isMarqueeActive || !selectionMarquee) return;
+    const rect = canvasStage.getBoundingClientRect();
+    const currentX = e.clientX - rect.left;
+    const currentY = e.clientY - rect.top;
+
+    const left = Math.min(startClientX, currentX);
+    const top = Math.min(startClientY, currentY);
+    const width = Math.abs(currentX - startClientX);
+    const height = Math.abs(currentY - startClientY);
+
+    selectionMarquee.style.left = `${left}px`;
+    selectionMarquee.style.top = `${top}px`;
+    selectionMarquee.style.width = `${width}px`;
+    selectionMarquee.style.height = `${height}px`;
+  });
+
+  canvasStage.addEventListener('mouseup', (e: MouseEvent) => {
+    if (!isSelectingRegion || !isMarqueeActive) return;
+    isMarqueeActive = false;
+    const rect = canvasStage.getBoundingClientRect();
+    const currentX = e.clientX - rect.left;
+    const currentY = e.clientY - rect.top;
+
+    const left = Math.min(startClientX, currentX);
+    const top = Math.min(startClientY, currentY);
+    const width = Math.abs(currentX - startClientX);
+    const height = Math.abs(currentY - startClientY);
+
+    toggleRegionSelection(false);
+
+    if (width >= 20 && height >= 15 && docImg.naturalWidth && docImg.clientWidth) {
+      const scaleX = docImg.naturalWidth / docImg.clientWidth;
+      const scaleY = docImg.naturalHeight / docImg.clientHeight;
+
+      const naturalX = Math.round(left * scaleX);
+      const naturalY = Math.round(top * scaleY);
+      const naturalW = Math.round(width * scaleX);
+      const naturalH = Math.round(height * scaleY);
+
+      const offCanvas = document.createElement('canvas');
+      offCanvas.width = naturalW;
+      offCanvas.height = naturalH;
+      const ctx = offCanvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(docImg, naturalX, naturalY, naturalW, naturalH, 0, 0, naturalW, naturalH);
+        const cropDataUrl = offCanvas.toDataURL('image/png');
+        openRegionTranscriptionDialog(
+          cropDataUrl,
+          { x: naturalX, y: naturalY, width: naturalW, height: naturalH, page: currentPage },
+          (newDraft) => {
+            session.drafts.push(newDraft);
+            selectedDraftId = newDraft.id;
+            activeMobileTab = 'meds';
+            updateMobileTabs();
+            renderCandidates();
+            updateHighlightBox();
+          }
+        );
+      }
+    }
+  });
+
   // Load active page image
   const loadPageImage = (pageNum: number) => {
     const pageData = session.pages.find(p => p.pageNumber === pageNum) || session.pages[0];
@@ -490,39 +967,69 @@ export function openPrescriptionReviewModal(
       candidatesMount.innerHTML = `
         <div class="rx-empty-state">
           <div class="rx-empty-state-icon" aria-hidden="true">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="8" x2="12" y2="12"></line>
-              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <circle cx="12" cy="14" r="3"></circle>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
             </svg>
           </div>
-          <h3>No Medications Could Be Reliably Identified</h3>
-          <p>We couldn't read the medication information clearly. Please try a clearer image or enter the medication details after checking with your pharmacist or prescribing doctor.</p>
+          <h3>Handwriting Could Not Be Recognized</h3>
+          <p style="max-width: 480px; margin: 0.5rem auto 1rem; color: var(--text-muted); font-size: 0.875rem; line-height: 1.5;">
+            CareDose could not confidently read the handwritten medication information. You can select a medication region, enter the details manually, or confirm unclear information with your pharmacist.
+          </p>
+
+          ${session.diagnostics?.stageFailureSummary ? `
+            <div class="rx-notice-banner notice-caution" style="text-align: left; font-size: 0.8125rem; margin-bottom: 0.5rem;">
+              <strong>Diagnostic Status:</strong> ${escapeHtml(session.diagnostics.stageFailureSummary)}
+            </div>
+          ` : ''}
+
           <div class="rx-empty-state-actions">
-            <button type="button" class="btn btn-primary" id="btn-empty-retake">
+            <button type="button" class="btn btn-primary" id="btn-empty-select-region">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                <polyline points="23 4 23 10 17 10"></polyline>
-                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" stroke-dasharray="3 3"></rect>
               </svg>
-              <span>Retake / Replace Image</span>
+              <span>Select Medication Region</span>
             </button>
             <button type="button" class="btn btn-secondary" id="btn-empty-add-manual">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                 <line x1="12" y1="5" x2="12" y2="19"></line>
                 <line x1="5" y1="12" x2="19" y2="12"></line>
               </svg>
-              <span>Enter Medication Manually</span>
+              <span>Enter Manually</span>
+            </button>
+            <button type="button" class="btn btn-secondary" id="btn-empty-retake">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+              </svg>
+              <span>Replace Image / Retake</span>
+            </button>
+            <button type="button" class="btn btn-secondary" id="btn-empty-view-diag">
+              <span>View Diagnostics</span>
+            </button>
+            <button type="button" class="btn btn-link" id="btn-empty-cancel" style="color: var(--text-muted); font-size: 0.875rem;">
+              Cancel
             </button>
           </div>
         </div>
       `;
+
+      candidatesMount.querySelector('#btn-empty-select-region')?.addEventListener('click', () => {
+        toggleRegionSelection(true);
+      });
       candidatesMount.querySelector('#btn-empty-retake')?.addEventListener('click', () => {
         cleanup();
         openPrescriptionUploadModal(onComplete);
       });
       candidatesMount.querySelector('#btn-empty-add-manual')?.addEventListener('click', () => {
+        addManualCandidate();
+      });
+      candidatesMount.querySelector('#btn-empty-view-diag')?.addEventListener('click', () => {
+        openDiagnosticsModal(session.diagnostics);
+      });
+      candidatesMount.querySelector('#btn-empty-cancel')?.addEventListener('click', () => {
         cleanup();
-        openMedicationModal(undefined, onComplete);
       });
       updateFooter();
       return;

@@ -122,9 +122,54 @@ export async function recognizePrintedText(
     }
   }
 
-  // Extract structured word and line segments with bounding boxes
+  // Extract structured word and line segments with true bounding boxes
   const segments: TextRecognitionSegment[] = [];
+  const lineSegments: TextRecognitionSegment[] = [];
 
+  // Extract lines with their native bounding boxes
+  if (Array.isArray(result.data.lines)) {
+    for (const l of result.data.lines) {
+      if (!l.text || !l.text.trim()) continue;
+
+      const bbox = l.bbox ? {
+        x: Math.round(l.bbox.x0),
+        y: Math.round(l.bbox.y0),
+        width: Math.round(l.bbox.x1 - l.bbox.x0),
+        height: Math.round(l.bbox.y1 - l.bbox.y0)
+      } : undefined;
+
+      const isUnclear = (typeof l.confidence === 'number' && l.confidence < 60);
+
+      const wordsInLine: TextRecognitionSegment[] = [];
+      if (Array.isArray(l.words)) {
+        for (const w of l.words) {
+          if (!w.text || !w.text.trim()) continue;
+          wordsInLine.push({
+            text: w.text.trim(),
+            confidence: w.confidence,
+            bbox: w.bbox ? {
+              x: Math.round(w.bbox.x0),
+              y: Math.round(w.bbox.y0),
+              width: Math.round(w.bbox.x1 - w.bbox.x0),
+              height: Math.round(w.bbox.y1 - w.bbox.y0)
+            } : undefined,
+            type: 'word'
+          });
+        }
+      }
+
+      lineSegments.push({
+        text: l.text.trim(),
+        confidence: l.confidence,
+        bbox,
+        type: 'line',
+        isHandwritingCandidate: isUnclear,
+        words: wordsInLine
+      });
+    }
+  }
+
+  // Extract words for fine-grained token lookup
   if (Array.isArray(result.data.words)) {
     for (const w of result.data.words) {
       if (!w.text || !w.text.trim()) continue;
@@ -136,14 +181,13 @@ export async function recognizePrintedText(
         height: Math.round(w.bbox.y1 - w.bbox.y0)
       } : undefined;
 
-      // Words with very low OCR confidence or high character anomalies
-      // are potential handwriting candidates or damaged text
       const isUnclear = (typeof w.confidence === 'number' && w.confidence < 60);
 
       segments.push({
         text: w.text.trim(),
         confidence: w.confidence,
         bbox,
+        type: 'word',
         isHandwritingCandidate: isUnclear
       });
     }
@@ -153,8 +197,22 @@ export async function recognizePrintedText(
     text: rawText,
     source: 'ocr',
     confidence: overallConfidence,
-    segments
+    segments,
+    lines: lineSegments
   };
+}
+
+/**
+ * Specialized recognition for an isolated cropped region (e.g. user-selected handwriting line).
+ * Uses PSM 6 (single uniform block) or PSM 7 (single text line) for significantly improved accuracy
+ * on isolated handwritten drug names and doses.
+ */
+export async function recognizeCroppedRegion(
+  imageSource: string | Blob | HTMLCanvasElement,
+  options: { psm?: number; onProgress?: (info: OcrProgressInfo) => void } = {}
+): Promise<TextRecognitionResult> {
+  const psm = options.psm ?? 6;
+  return recognizePrintedText(imageSource, { psm, onProgress: options.onProgress });
 }
 
 /**
