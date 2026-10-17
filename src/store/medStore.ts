@@ -1,4 +1,14 @@
-import type { Medication, PatientProfile, DailyLog, UserPreferences, TimeSlot, ReminderPreferences, ReminderDeliveryState } from '../types';
+import type { 
+  Medication, 
+  PatientProfile, 
+  DailyLog, 
+  UserPreferences, 
+  TimeSlot, 
+  ReminderPreferences, 
+  ReminderDeliveryState,
+  MedicationStatus,
+  BackupValidationResult
+} from '../types';
 import { generateLocalId } from '../utils/sanitize';
 import { formatShortTime, getTodayDateString } from '../utils/date';
 import { DEFAULT_PROFILE, DEFAULT_MEDICATIONS, DEFAULT_PREFERENCES, DEFAULT_REMINDER_PREFERENCES, DEFAULT_DELIVERY_STATE } from '../data/defaultData';
@@ -17,6 +27,8 @@ import {
   loadStoredDeliveryState,
   saveStoredDeliveryState,
   exportAllDataAsJSON,
+  validateBackupJSON,
+  restoreBackupData,
   clearAllLocalData
 } from '../storage/storage';
 
@@ -96,9 +108,14 @@ class MedicationStore {
 
   // Mutations
   public addMedication(med: Omit<Medication, 'id' | 'createdAt'>): Medication {
+    const status: MedicationStatus = med.status || (med.isActive !== false ? 'active' : 'paused');
     const newMed: Medication = {
       ...med,
       id: generateLocalId('med'),
+      status,
+      isActive: status === 'active',
+      remindersEnabled: med.remindersEnabled !== false,
+      isPRN: !!med.isPRN,
       createdAt: new Date().toISOString()
     };
     this.medications.push(newMed);
@@ -110,10 +127,42 @@ class MedicationStore {
   public updateMedication(id: string, updates: Partial<Medication>): void {
     const index = this.medications.findIndex(m => m.id === id);
     if (index !== -1) {
-      this.medications[index] = { ...this.medications[index], ...updates };
+      const current = this.medications[index];
+      let newStatus: MedicationStatus = updates.status || current.status || (current.isActive ? 'active' : 'paused');
+      if (updates.isActive !== undefined && updates.status === undefined) {
+        newStatus = updates.isActive ? 'active' : 'paused';
+      }
+      const newIsActive = newStatus === 'active';
+
+      this.medications[index] = {
+        ...current,
+        ...updates,
+        status: newStatus,
+        isActive: newIsActive
+      };
       saveStoredMedications(this.medications);
       this.notify();
     }
+  }
+
+  public setMedicationStatus(id: string, status: MedicationStatus): void {
+    this.updateMedication(id, { status, isActive: status === 'active' });
+  }
+
+  public pauseMedication(id: string): void {
+    this.setMedicationStatus(id, 'paused');
+  }
+
+  public resumeMedication(id: string): void {
+    this.setMedicationStatus(id, 'active');
+  }
+
+  public completeMedication(id: string): void {
+    this.setMedicationStatus(id, 'completed');
+  }
+
+  public discontinueMedication(id: string): void {
+    this.setMedicationStatus(id, 'discontinued');
   }
 
   public deleteMedication(id: string): void {
@@ -125,9 +174,8 @@ class MedicationStore {
   public toggleMedicationActive(id: string): void {
     const med = this.medications.find(m => m.id === id);
     if (med) {
-      med.isActive = !med.isActive;
-      saveStoredMedications(this.medications);
-      this.notify();
+      const nextStatus: MedicationStatus = med.status === 'active' ? 'paused' : 'active';
+      this.setMedicationStatus(id, nextStatus);
     }
   }
 
@@ -207,6 +255,22 @@ class MedicationStore {
 
   public exportData(): string {
     return exportAllDataAsJSON();
+  }
+
+  public validateBackup(rawJson: string): BackupValidationResult {
+    return validateBackupJSON(rawJson);
+  }
+
+  public restoreBackup(
+    parsedData: any, 
+    mode: 'replace' | 'merge'
+  ): { success: boolean; message: string; restoredMedsCount: number } {
+    const result = restoreBackupData(parsedData, mode);
+    if (result.success) {
+      this.refreshFromStorage();
+      this.notify();
+    }
+    return result;
   }
 
   public permanentlyWipeData(): void {

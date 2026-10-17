@@ -28,6 +28,55 @@ export function parseSlotTime(baseDate: Date, timeStr: string): Date {
 }
 
 /**
+ * Evaluates whether a medication is scheduled for administration on a given date.
+ * Excludes paused, completed, or discontinued medications, PRN medications,
+ * medications outside their start/end date range, or medications not scheduled on the given weekday.
+ */
+export function isMedicationScheduledForDate(med: Medication, date: Date | string = new Date()): boolean {
+  if (!med) return false;
+
+  // 1. Lifecycle status check: must be active
+  if (med.status !== undefined) {
+    if (med.status !== 'active') return false;
+  } else if (!med.isActive) {
+    return false;
+  }
+
+  // 2. PRN check: as-needed medications do not have fixed recurring schedules
+  if (med.isPRN) {
+    return false;
+  }
+
+  // 3. Reminder toggle check
+  if (med.remindersEnabled === false) {
+    return false;
+  }
+
+  const d = typeof date === 'string' ? new Date(date + 'T12:00:00') : date;
+  const dateStr = getTodayDateString(d);
+
+  // 4. Treatment start date
+  if (med.startDate && dateStr < med.startDate) {
+    return false;
+  }
+
+  // 5. Treatment end date (course completed)
+  if (med.endDate && dateStr > med.endDate) {
+    return false;
+  }
+
+  // 6. Weekday schedule check (0 = Sun, 1 = Mon, ..., 6 = Sat)
+  if (med.weekdays && med.weekdays.length > 0) {
+    const dayOfWeek = d.getDay();
+    if (!med.weekdays.includes(dayOfWeek)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
  * Pure, deterministic evaluation of which medication reminders are currently due.
  * Does not interact with the DOM or system APIs.
  */
@@ -46,8 +95,8 @@ export function calculateDueReminders(
   const nowMs = referenceDate.getTime();
   const dueEvents: ScheduledReminderEvent[] = [];
 
-  // Filter to active medications only
-  const activeMeds = activeMedications.filter(m => m && m.isActive);
+  // Filter to eligible scheduled active medications for this date
+  const activeMeds = activeMedications.filter(m => isMedicationScheduledForDate(m, referenceDate));
   if (activeMeds.length === 0) {
     return [];
   }
@@ -139,7 +188,7 @@ export function getUpcomingDoseGroup(
   slotTimes: Record<TimeSlot, string>,
   referenceDate: Date = new Date()
 ): UpcomingDoseInfo | null {
-  const activeMeds = activeMedications.filter(m => m && m.isActive);
+  const activeMeds = activeMedications.filter(m => isMedicationScheduledForDate(m, referenceDate));
   if (activeMeds.length === 0) return null;
 
   const nowMs = referenceDate.getTime();

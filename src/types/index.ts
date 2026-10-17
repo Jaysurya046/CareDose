@@ -17,23 +17,51 @@ export interface PillVisual {
   color: PillColor;
 }
 
+export type MedicationStatus = 'active' | 'paused' | 'completed' | 'discontinued';
+
 export interface Medication {
   id: string;
   name: string;
   genericName?: string;
-  dosage: string;
-  form: string; // e.g., 'Tablet', 'Capsule', 'Liquid', 'Inhaler'
-  timeSlots: TimeSlot[];
+  dosage: string; // Clinical strength, e.g. "500 mg", "20 mEq"
+  doseQuantity?: string; // Dose units per administration, e.g. "1 tablet", "2 puffs", "5 ml" (kept separate from strength)
+  form: string; // e.g. 'Tablet', 'Capsule', 'Liquid', 'Inhaler', 'Drops', 'Injection', 'Patch', etc.
+  route?: string; // e.g. 'Oral', 'Inhalation', 'Topical', 'Sublingual', 'Ophthalmic', 'Otic', 'Subcutaneous', etc.
+  frequency?: string; // e.g. 'Once daily', 'Twice daily', 'Three times daily', 'Four times daily', 'As needed (PRN)', 'Weekly', etc.
+  isPRN?: boolean; // As-needed flag (no fixed daily reminder times unless explicitly configured)
+  timeSlots: TimeSlot[]; // Standard time slots (morning, midday, evening, bedtime)
+  customTimes?: string[]; // Custom specific clock times (e.g. ["08:00", "20:00"])
+  weekdays?: number[]; // [0..6] (0 = Sunday) for day-specific schedules
+  startDate?: string; // YYYY-MM-DD
+  endDate?: string; // YYYY-MM-DD treatment duration / completion date
+  duration?: string; // Human-readable duration, e.g. "10 days", "Ongoing"
+  remindersEnabled?: boolean; // Specific toggle per medication
+  status?: MedicationStatus; // 'active' | 'paused' | 'completed' | 'discontinued'
   withFood: boolean;
   instructions: string;
   pillVisual: PillVisual;
   prescribedBy?: string;
   refillDate?: string;
-  isActive: boolean;
+  isActive: boolean; // Kept in sync: status === 'active' for backwards compatibility
   createdAt: string;
   isPrescriptionImport?: boolean;
   prescriptionVerificationStatus?: VerificationStatus;
   importedAt?: string;
+}
+
+export interface BackupValidationResult {
+  isValid: boolean;
+  schemaVersion?: number;
+  error?: string;
+  recordCounts?: {
+    medications: number;
+    patientProfile: boolean;
+    dailyLogDoses: number;
+  };
+  duplicateCount?: number;
+  duplicateNames?: string[];
+  plaintextNotice?: string;
+  parsedData?: any;
 }
 
 export type FieldStatus =
