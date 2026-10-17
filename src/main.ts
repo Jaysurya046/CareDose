@@ -4,7 +4,7 @@ import { renderHeader } from './components/Header';
 import { renderDailyTimeline } from './components/DailyTimeline';
 import { renderMedicationCabinet } from './components/MedicationCabinet';
 import { renderFridgeSheet } from './components/FridgeSheet';
-import { initReminderCoordinator } from './engine/reminderCoordinator';
+import { reminderCoordinator } from './services/reminders/reminderCoordinator';
 
 // Initialize application state
 let currentTab: string = 'timeline';
@@ -43,7 +43,7 @@ applyInitialPreferences();
 renderCurrentView();
 
 // Initialize proactive in-app reminder system and visibility listeners
-initReminderCoordinator(reminderMount);
+reminderCoordinator.initialize(reminderMount);
 
 // Subscribe to store updates for reactive re-rendering
 medStore.subscribe(() => {

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">CareDose</string>
+    <string name="title_activity_main">CareDose</string>
+    <string name="package_name">org.caredose.app</string>
+    <string name="custom_url_scheme">org.caredose.app</string>
+</resources>
